@@ -1,0 +1,173 @@
+/* Tailwind v4 setup. source(none) + @source = si Tailwind lang ang magsi-scan sa src folder para sa mga classes */
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css"; /* animations na ginagamit ng shadcn components */
+
+/* Para gumana yung "dark:" classes kapag may ".dark" class sa <html> */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * DrainLift design system: pang-IoT monitoring ang itsura.
+ * Dark ang default na theme, at may light theme din na pang-umaga/daylight.
+ */
+
+/* Ini-register natin dito yung mga colors, radius, at fonts para magamit bilang Tailwind classes
+   (hal. bg-primary, text-muted-foreground, font-mono) */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Mga kulay at values. Yung :root ay para sa LIGHT theme, yung dark colors ay nasa .dark sa baba */
+:root {
+  --radius: 0.75rem; /* roundness ng mga corners */
+  --background: oklch(0.975 0.005 240);
+  --foreground: oklch(0.22 0.03 250);
+  --surface: oklch(1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.03 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.03 250);
+  --primary: oklch(0.62 0.17 152);
+  --primary-foreground: oklch(0.99 0.01 150);
+  --secondary: oklch(0.94 0.01 240);
+  --secondary-foreground: oklch(0.25 0.03 250);
+  --muted: oklch(0.95 0.008 240);
+  --muted-foreground: oklch(0.5 0.02 250);
+  --accent: oklch(0.6 0.16 250);
+  --accent-foreground: oklch(0.99 0.01 250);
+  --destructive: oklch(0.58 0.22 25);
+  --destructive-foreground: oklch(0.99 0.01 25);
+  --warning: oklch(0.75 0.15 80);
+  --warning-foreground: oklch(0.25 0.05 80);
+  --info: oklch(0.6 0.16 250);
+  --border: oklch(0.9 0.012 245);
+  --border-strong: oklch(0.84 0.02 245);
+  --input: oklch(0.9 0.012 245);
+  --ring: oklch(0.62 0.17 152);
+  --sidebar: oklch(0.985 0.004 240);
+  --sidebar-foreground: oklch(0.25 0.03 250);
+  --sidebar-border: oklch(0.9 0.012 245);
+}
+
+/* DARK theme colors (naka-add ang ".dark" class sa <html> sa app-state.tsx) */
+.dark {
+  --background: oklch(0.16 0.017 250);
+  --foreground: oklch(0.95 0.008 245);
+  --surface: oklch(0.19 0.02 250);
+  --card: oklch(0.2 0.02 252);
+  --card-foreground: oklch(0.95 0.008 245);
+  --popover: oklch(0.2 0.02 252);
+  --popover-foreground: oklch(0.95 0.008 245);
+  --primary: oklch(0.72 0.18 152);
+  --primary-foreground: oklch(0.17 0.03 155);
+  --secondary: oklch(0.25 0.02 250);
+  --secondary-foreground: oklch(0.94 0.008 245);
+  --muted: oklch(0.24 0.02 250);
+  --muted-foreground: oklch(0.66 0.02 250);
+  --accent: oklch(0.66 0.16 250);
+  --accent-foreground: oklch(0.16 0.03 250);
+  --destructive: oklch(0.62 0.21 25);
+  --destructive-foreground: oklch(0.97 0.01 25);
+  --warning: oklch(0.78 0.15 80);
+  --warning-foreground: oklch(0.2 0.04 80);
+  --info: oklch(0.66 0.16 250);
+  --border: oklch(0.29 0.025 252);
+  --border-strong: oklch(0.36 0.03 252);
+  --input: oklch(0.29 0.025 252);
+  --ring: oklch(0.72 0.18 152);
+  --sidebar: oklch(0.145 0.018 252);
+  --sidebar-foreground: oklch(0.93 0.008 245);
+  --sidebar-border: oklch(0.27 0.025 252);
+}
+
+/* Base styles para sa buong page */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom utilities ng DrainLift (class="dl-label", "dl-accent-top", "dl-glow-alert") */
+
+/* Maliit na uppercase na label (ginagamit sa mga table header at card labels) */
+@utility dl-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+/* Card na may gradient na manipis na linya sa taas (green papuntang blue) */
+@utility dl-accent-top {
+  position: relative;
+  overflow: hidden;
+  &::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      var(--color-primary),
+      var(--color-accent) 60%,
+      transparent
+    );
+  }
+}
+
+/* Pulang glow sa background, para sa live alert card sa dashboard */
+@utility dl-glow-alert {
+  background:
+    radial-gradient(
+      120% 140% at 0% 0%,
+      color-mix(in oklab, var(--color-destructive) 22%, transparent),
+      transparent 60%
+    ),
+    var(--color-card);
+}
