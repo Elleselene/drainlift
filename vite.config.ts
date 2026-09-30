@@ -7,6 +7,8 @@ import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 import { nitro } from "nitro/vite";
+import { VitePWA } from "vite-plugin-pwa";
+
 
 export default defineConfig(({ command }) => ({
   plugins: [
@@ -41,6 +43,45 @@ export default defineConfig(({ command }) => ({
       : []),
 
     // React plugin (JSX + fast refresh)
+
+    VitePWA({
+      registerType: "autoUpdate",
+
+      manifest: {
+        name: "DrainLift",
+        short_name: "DrainLift",
+        description: "Smart Drain Waste Monitoring System",
+        theme_color: "#0f172a",
+        background_color: "#0f172a",
+        display: "standalone",
+        start_url: "/",
+        scope: "/",
+
+        icons: [
+          {
+            src: "/pwa-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+          },
+          {
+            src: "/pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+          },
+          {
+            src: "/pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
+      },
+
+      workbox: {
+        navigateFallback: null,
+      },
+    }),
+
     viteReact(),
   ],
 
