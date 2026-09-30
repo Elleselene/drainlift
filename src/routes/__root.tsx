@@ -82,6 +82,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "theme-color", content: "#0f172a" },
       { title: "DrainLift — Smart Drainage Monitoring" },
       {
         name: "description",
@@ -99,7 +100,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       // Global styles natin (Tailwind + colors)
+       {
+        rel: "manifest",
+        href: "/manifest.webmanifest",
+      },
+
       {
+        
         rel: "stylesheet",
         href: appCss,
       },
