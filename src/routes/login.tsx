@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Lock, Mail, Waves } from "lucide-react";
+import { Lock, Mail } from "lucide-react";
 import { Button, Card } from "@/components/dl/primitives";
 import { useAppState } from "@/lib/app-state";
-import { currentUser } from "@/lib/drainlift";
 
 // Login page (URL: "/login").
-// Fake login lang ito: kahit anong email na may "@" at password na 6+ characters ay papasok.
+// TOTOONG login na ito gamit ang Supabase Auth (email + password) — kailangan munang
+// gumawa ng account sa Supabase dashboard (Authentication -> Users -> "Add user") bago
+// makapag-sign in dito.
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
@@ -27,26 +28,24 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { signIn, signedIn } = useAppState();
+  const { signIn, signedIn, authLoading } = useAppState();
   const navigate = useNavigate();
-  // May default na value para mabilis mag-demo
-  const [email, setEmail] = useState(currentUser.email);
-  const [password, setPassword] = useState("drainlift");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState(""); // error message sa form
+  const [submitting, setSubmitting] = useState(false); // habang hinihintay ang Supabase
 
-  // Kung naka-sign in na, dalhin na agad sa dashboard
+  // Kung naka-sign in na (o may existing session), dalhin na agad sa dashboard
   useEffect(() => {
-    if (signedIn) navigate({ to: "/" });
-  }, [signedIn, navigate]);
+    if (!authLoading && signedIn) navigate({ to: "/" });
+  }, [authLoading, signedIn, navigate]);
 
   return (
     <div className="grid min-h-screen place-items-center bg-background px-4 py-10">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-6 flex items-center justify-center gap-2.5">
-          <span className="grid h-10 w-10 place-items-center rounded-lg border border-primary/40 bg-primary/10 text-primary">
-            <Waves className="h-5 w-5" />
-          </span>
+          <img src="/logo.png" alt="DrainLift logo" className="h-10 w-10 object-contain" />
           <span className="text-2xl font-bold tracking-tight">
             <span className="text-primary">Drain</span>
             <span className="text-info">Lift</span>
@@ -65,16 +64,20 @@ function LoginPage() {
 
           <form
             className="mt-5 space-y-4"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault(); // huwag i-reload ang page
-              // Simpleng validation: may "@" ang email at hindi bababa sa 6 ang password
               if (!email.includes("@") || password.length < 6) {
                 setError("Enter a valid email and a password of at least 6 characters.");
                 return;
               }
-              // Okay na, i-sign in tapos punta sa dashboard
               setError("");
-              signIn();
+              setSubmitting(true);
+              const { error: signInError } = await signIn(email, password);
+              setSubmitting(false);
+              if (signInError) {
+                setError(signInError);
+                return;
+              }
               navigate({ to: "/" });
             }}
           >
@@ -87,6 +90,7 @@ function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   className="w-full bg-transparent py-2 font-mono text-sm outline-none"
                 />
               </div>
@@ -101,6 +105,7 @@ function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
                   className="w-full bg-transparent py-2 font-mono text-sm outline-none"
                 />
               </div>
@@ -109,11 +114,10 @@ function LoginPage() {
             {/* Lalabas lang kung may error */}
             {error && <p className="text-xs text-destructive">{error}</p>}
 
-            <Button variant="primary" type="submit" className="w-full">
-              Sign in
+            <Button variant="primary" type="submit" className="w-full" disabled={submitting}>
+              {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-
         </Card>
       </div>
     </div>

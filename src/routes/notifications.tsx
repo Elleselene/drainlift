@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, Bell, CheckCircle2 } from "lucide-react";
 import { AppShell } from "@/components/dl/AppShell";
@@ -10,9 +10,9 @@ import {
   StatCard,
   StatusPill,
 } from "@/components/dl/primitives";
-import { notifications as seed } from "@/lib/drainlift";
 
-// Notifications page (URL: "/notifications"): buong history ng alerts na may filter at pagination
+// Notifications page (URL: "/notifications"): buong history ng alerts na may filter at
+// pagination — TOTOONG data na ito galing sa Supabase (audit log), hindi na dummy.
 export const Route = createFileRoute("/notifications")({
   head: () => ({
     meta: [
@@ -32,26 +32,51 @@ export const Route = createFileRoute("/notifications")({
   component: NotificationsPage,
 });
 
-const filters = ["All", "Acknowledged", "Auto-Released"] as const; // mga filter buttons
+// Hugis ng bawat row na ibinabalik ng GET /api/notification-history
+type HistoryRow = {
+  id: string;
+  index: string;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  deviceId: string;
+  fillLevel: number;
+  status: "acknowledged" | "auto-released" | "released";
+};
+
+const filters = ["All", "Acknowledged", "Auto-Released", "Released"] as const; // mga filter buttons
 const PAGE_SIZE = 4; // ilang rows ang lalabas kada page
 
 function NotificationsPage() {
-  const [rows, setRows] = useState(seed); // lahat ng notifications (may kopya tayo para ma-update)
+  const [rows, setRows] = useState<HistoryRow[] | null>(null); // null = loading pa
   const [filter, setFilter] = useState<(typeof filters)[number]>("All"); // napiling filter
   const [page, setPage] = useState(0); // kasalukuyang page (0 = una)
 
-  // I-filter ang rows base sa napiling filter (uulitin lang pag nagbago ang rows o filter)
-  const filtered = useMemo(
-    () =>
-      rows.filter((r) =>
-        filter === "All"
-          ? true
-          : filter === "Acknowledged"
-            ? r.status === "acknowledged"
-            : r.status === "auto-released",
-      ),
-    [rows, filter],
-  );
+  // Kunin ang totoong history galing sa Supabase (client-only, hindi ito available sa SSR)
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/notification-history")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setRows(data.rows ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const allRows = rows ?? [];
+
+  // I-filter ang rows base sa napiling filter
+  const filtered = allRows.filter((r) => {
+    if (filter === "All") return true;
+    if (filter === "Acknowledged") return r.status === "acknowledged";
+    if (filter === "Auto-Released") return r.status === "auto-released";
+    return r.status === "released"; // "Released" = manual na "Activate Actuator" command
+  });
 
   // Ilang pages lahat (kahit walang rows, minimum na 1 page)
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -59,23 +84,20 @@ function NotificationsPage() {
   const visible = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   return (
-    <AppShell
-      title="Notifications"
-      subtitle="Alert history and acknowledgment log"
-    >
+    <AppShell title="Notifications" subtitle="Alert history and acknowledgment log">
       <div className="space-y-5">
         {/* Summary cards: bilangin ang bawat status */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard value={rows.length} label="Notifications Today" icon={<Bell className="h-5 w-5" />} />
+          <StatCard value={allRows.length} label="Total Notifications" icon={<Bell className="h-5 w-5" />} />
           <StatCard
-            value={rows.filter((r) => r.status === "acknowledged").length}
-            label="Acknowledged Today"
+            value={allRows.filter((r) => r.status === "acknowledged").length}
+            label="Acknowledged"
             icon={<CheckCircle2 className="h-5 w-5" />}
             tone="primary"
           />
           <StatCard
-            value={rows.filter((r) => r.status === "auto-released").length}
-            label="Auto-Released Today"
+            value={allRows.filter((r) => r.status !== "acknowledged").length}
+            label="Actuator Activated"
             icon={<AlertTriangle className="h-5 w-5" />}
             tone="warning"
           />
@@ -116,50 +138,49 @@ function NotificationsPage() {
               </tr>
             </thead>
             <tbody>
-              {/* Rows para sa kasalukuyang page lang */}
-              {visible.map((n) => (
-                <tr key={n.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 font-mono text-muted-foreground">{n.index}</td>
-                  <td className="px-4 py-3">
-                    <p className="font-semibold">{n.title}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{n.subtitle}</p>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">{n.timestamp}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-info">{n.deviceId}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <FillBar level={n.fillLevel} className="w-20" />
-                      <span className="font-mono text-xs">{n.fillLevel}%</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {/* Pending: may Acknowledge button. Pag pinindot, magiging "acknowledged" ang status ng row */}
-                    {n.status === "pending" && (
-                      <Button
-                        variant="primary"
-                        className="px-2.5 py-1.5 text-xs"
-                        onClick={() =>
-                          setRows((prev) =>
-                            prev.map((r) =>
-                              r.id === n.id ? { ...r, status: "acknowledged" } : r,
-                            ),
-                          )
-                        }
-                      >
-                        Acknowledge
-                      </Button>
-                    )}
-                    {n.status === "acknowledged" && (
-                      <StatusPill tone="primary">Acknowledged</StatusPill>
-                    )}
-                    {n.status === "auto-released" && (
-                      <StatusPill tone="warning">Auto-Released</StatusPill>
-                    )}
+              {/* Habang hinihintay pa ang response galing sa backend */}
+              {rows === null && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                    Loading notification history…
                   </td>
                 </tr>
-              ))}
+              )}
+              {/* Rows para sa kasalukuyang page lang */}
+              {rows !== null &&
+                visible.map((n) => (
+                  <tr key={n.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 font-mono text-muted-foreground">{n.index}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold">{n.title}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{n.subtitle}</p>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">{n.timestamp}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-info">{n.deviceId}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <FillBar level={n.fillLevel} className="w-20" />
+                        <span className="font-mono text-xs">{n.fillLevel}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Bawat row dito ay laging RESOLVED na (acknowledged o released) —
+                          ang kasalukuyang "buhay" pang alert (kung meron) ay nasa Dashboard,
+                          hindi dito sa history. */}
+                      {n.status === "acknowledged" && (
+                        <StatusPill tone="primary">Acknowledged</StatusPill>
+                      )}
+                      {n.status === "auto-released" && (
+                        <StatusPill tone="warning">Auto-Released</StatusPill>
+                      )}
+                      {n.status === "released" && (
+                        <StatusPill tone="warning">Actuator Activated</StatusPill>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               {/* Mensahe kung walang tugma sa filter */}
-              {visible.length === 0 && (
+              {rows !== null && visible.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                     No notifications for this filter.

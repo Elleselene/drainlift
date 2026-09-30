@@ -1,21 +1,37 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  BarChart3,
-  Bell,
-  Info,
-  LogOut,
-  Menu,
-  Moon,
-  Sun,
-  User,
-  Waves,
-  X,
-} from "lucide-react";
+import { BarChart3, Bell, Info, LogOut, Menu, Moon, Sun, User, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/app-state";
-import { currentUser, notifications } from "@/lib/drainlift";
+import { initialsOf } from "@/lib/drainlift";
 import { StatusPill } from "./primitives";
+
+// Tinitignan kung may kasalukuyang "buhay" pang alert (GET /api/notification, totoong
+// Supabase state) — dito nanggagaling ang pulang badge sa tabi ng "Dashboard" link.
+// Nagpo-poll ito kada 5 segundo para manatiling updated kahit sa ibang page ka nakatingin.
+function useHasPendingAlert() {
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      fetch("/api/notification")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled) setPending(data.notificationStatus === "SENT" ? 1 : 0);
+        })
+        .catch(() => {
+          /* hayaan lang — susubukan ulit sa susunod na poll */
+        });
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+  return pending;
+}
 
 // AppShell = yung layout na ginagamit ng lahat ng pages: sidebar sa kaliwa, header sa taas,
 // at yung page content sa gitna.
@@ -39,13 +55,13 @@ const navGroups = [
   },
 ] as const;
 
-// Logo at pangalan ng app sa taas ng sidebar
+// Logo at pangalan ng app sa taas ng sidebar.
+// Ang larawan ay dapat nasa "public/logo.png" (ang laman ng public/ ay direktang naa-access
+// sa root ng site, kaya "/logo.png" lang ang path dito, hindi na kasama ang salitang "public").
 function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-5 py-5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-primary/40 bg-primary/10 text-primary">
-        <Waves className="h-5 w-5" />
-      </span>
+      <img src="/logo.png" alt="DrainLift logo" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
       <span className="truncate text-xl font-bold tracking-tight">
         <span className="text-primary">Drain</span>
         <span className="text-info">Lift</span>
@@ -60,8 +76,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname }); // kasalukuyang URL
   const { theme, toggleTheme, signOut, profile } = useAppState();
   const navigate = useNavigate();
-  // Bilangin ang mga alert na pending pa, yun ang lalabas sa badge
-  const pending = notifications.filter((n) => n.status === "pending").length;
+  // Kasalukuyang bilang ng "buhay" pang alert (0 o 1), yun ang lalabas sa badge
+  const pending = useHasPendingAlert();
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -131,11 +147,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         {/* User card: initials, pangalan, role, at logout button */}
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-sidebar-border bg-card px-3 py-2.5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-info to-primary font-mono text-xs font-bold text-primary-foreground">
-            {currentUser.initials}
+            {initialsOf(profile.name)}
           </span>
           <Link to="/profile" onClick={onNavigate} className="min-w-0">
             <p className="truncate text-sm font-medium">{profile.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{currentUser.role}</p>
+            <p className="truncate text-xs text-muted-foreground">{profile.role}</p>
           </Link>
           <button
             type="button"
@@ -169,13 +185,15 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false); // bukas ba yung mobile menu
-  const { signedIn, demoMode } = useAppState();
+  const { signedIn, authLoading, demoMode } = useAppState();
   const navigate = useNavigate();
 
-  // Kung hindi naka-sign in, ibalik sa login page
+  // Kung hindi naka-sign in, ibalik sa login page. Hinihintay muna ng "authLoading" na
+  // matapos ang unang pag-check ni Supabase kung may existing session — kung hindi,
+  // biglang mare-redirect sa login habang tinitignan pa lang niya (false negative).
   useEffect(() => {
-    if (!signedIn) navigate({ to: "/login" });
-  }, [signedIn, navigate]);
+    if (!authLoading && !signedIn) navigate({ to: "/login" });
+  }, [authLoading, signedIn, navigate]);
 
   return (
     <div className="flex min-h-screen w-full bg-background">

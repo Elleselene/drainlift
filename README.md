@@ -4,17 +4,71 @@ Web dashboard para sa DrainLift, isang IoT drainage unit na nagbabantay sa waste
 ng canal at nagpapadala ng alert kapag puno na ito. Thesis project ito para sa mga barangay
 na gustong maiwasan ang baradong kanal at pagbaha.
 
-> Simulated (dummy) pa ang lahat ng data. Hindi pa nakakabit sa dashboard ang Raspberry Pi / Arduino unit.
+> Naka-Supabase na ang login, admin profile, at notification state — permanente na ang mga
+> ito (see "Supabase setup" sa baba). Ang ultrasonic sensor / actuator hardware pa rin ang
+> simulated, gamit ang "Simulate Alert" / "Mark Waste Removed" na buttons sa Dashboard, at ang
+> `POST /api/sensor-reading` endpoint na tatawagin balang araw ng totoong Arduino/Raspberry Pi.
 
 ## Pages
 
 | Route            | Description                                                      |
 | ---------------- | ---------------------------------------------------------------- |
-| `/login`         | Sign in page                                                     |
-| `/`              | Dashboard: live alert, device info, at notification history      |
+| `/login`         | Sign in gamit ang totoong Supabase Auth account                  |
+| `/`              | Dashboard: live alert (mula sa Supabase), device info, notification history |
 | `/notifications` | Buong alert history na may filter (All / Acknowledged / Auto-Released) at pagination |
 | `/about`         | Tungkol sa project at sa mga researchers                         |
-| `/profile`       | Admin profile (pwedeng i-edit ang name, email, phone)            |
+| `/profile`       | Admin profile mula sa Supabase (pwedeng i-edit ang name, phone, role) |
+
+## Supabase setup (kailangan bago gumana ang login at ang backend)
+
+Ang totoong login, admin profile, at ang notification state (FULL/NOT_FULL, acknowledge,
+release) ay naka-store na sa Supabase (isang libreng hosted na Postgres database + Auth
+service) — hindi na sa RAM lang ng server o sa browser localStorage.
+
+**1. Gumawa ng Supabase account at project**
+
+1. Pumunta sa [supabase.com](https://supabase.com), mag-sign up (pwede gamit ang GitHub)
+2. **New Project** — pumili ng pangalan, password (para sa database — i-save ito), at region
+   (pumili ng malapit, hal. Singapore)
+3. Hintayin matapos ang pag-setup (1-2 minuto)
+
+**2. Patakbuhin ang schema**
+
+1. Sa Supabase dashboard, pumunta sa **SQL Editor** (kaliwang sidebar) → **New query**
+2. Buksan ang `supabase/schema.sql` na kasama sa project na ito, i-copy ang buong laman
+3. I-paste sa SQL Editor, i-click **Run**
+4. Dapat walang error — nagawa na ang mga tables (`profiles`, `notification_state`,
+   `notification_history`)
+
+**3. Gumawa ng unang admin account**
+
+1. Sa Supabase dashboard, **Authentication** → **Users** → **Add user** → **Create new user**
+2. Ilagay ang email at password ng unang barangay admin (ito ang gagamitin sa login page)
+3. I-check ang **"Auto Confirm User"** (para hindi na kailangan ng email verification)
+4. Awtomatikong magkakaroon ng profile row ang user na ito (name, phone, role) — pwede mo
+   itong i-edit sa **Profile** page ng app pagkatapos mag-login
+
+**4. Kunin ang mga API key**
+
+1. Sa Supabase dashboard, **Project Settings** (gear icon) → **API**
+2. Kukunin mo ang tatlong ito:
+   - **Project URL** (hal. `https://xxxxxxxxxxxx.supabase.co`)
+   - **anon / public** key
+   - **service_role** key (**LIHIM ITO** — hindi dapat makita ng ibang tao)
+
+**5. I-configure locally (para sa `npm run dev`)**
+
+1. I-copy ang `.env.example` bilang bagong file na `.env` (parehong folder)
+2. Palitan ng totoong values ang apat na variable doon (galing sa hakbang 4)
+3. I-restart ang `npm run dev` kung tumatakbo ito
+
+**6. I-configure sa Render (para sa live/deployed na version)**
+
+1. Sa Render dashboard, buksan ang `drainlift` web service
+2. **Environment** tab (kaliwang sidebar)
+3. Idagdag ang apat na environment variable (parehong pangalan sa `.env` mo):
+   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+4. I-save — awtomatiko nitong ire-restart/re-deploy ang service gamit ang mga bagong values
 
 ## Paano gumagana ang alert
 

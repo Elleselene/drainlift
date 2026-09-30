@@ -14,6 +14,11 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as ApiNotificationRouteImport } from './routes/api/notification'
+import { Route as ApiNotificationAcknowledgeRouteImport } from './routes/api/notification-acknowledge'
+import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notification-history'
+import { Route as ApiNotificationReleaseRouteImport } from './routes/api/notification-release'
+import { Route as ApiSensorReadingRouteImport } from './routes/api/sensor-reading'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +45,32 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiNotificationRoute = ApiNotificationRouteImport.update({
+  id: '/api/notification',
+  path: '/api/notification',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiNotificationAcknowledgeRoute =
+  ApiNotificationAcknowledgeRouteImport.update({
+    id: '/api/notification-acknowledge',
+    path: '/api/notification-acknowledge',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiNotificationHistoryRoute = ApiNotificationHistoryRouteImport.update({
+  id: '/api/notification-history',
+  path: '/api/notification-history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiNotificationReleaseRoute = ApiNotificationReleaseRouteImport.update({
+  id: '/api/notification-release',
+  path: '/api/notification-release',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSensorReadingRoute = ApiSensorReadingRouteImport.update({
+  id: '/api/sensor-reading',
+  path: '/api/sensor-reading',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +78,11 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
+  '/api/notification': typeof ApiNotificationRoute
+  '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
+  '/api/notification-history': typeof ApiNotificationHistoryRoute
+  '/api/notification-release': typeof ApiNotificationReleaseRoute
+  '/api/sensor-reading': typeof ApiSensorReadingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +90,11 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
+  '/api/notification': typeof ApiNotificationRoute
+  '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
+  '/api/notification-history': typeof ApiNotificationHistoryRoute
+  '/api/notification-release': typeof ApiNotificationReleaseRoute
+  '/api/sensor-reading': typeof ApiSensorReadingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +103,49 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
+  '/api/notification': typeof ApiNotificationRoute
+  '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
+  '/api/notification-history': typeof ApiNotificationHistoryRoute
+  '/api/notification-release': typeof ApiNotificationReleaseRoute
+  '/api/sensor-reading': typeof ApiSensorReadingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/login' | '/notifications' | '/profile'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/login'
+    | '/notifications'
+    | '/profile'
+    | '/api/notification'
+    | '/api/notification-acknowledge'
+    | '/api/notification-history'
+    | '/api/notification-release'
+    | '/api/sensor-reading'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/login' | '/notifications' | '/profile'
-  id: '__root__' | '/' | '/about' | '/login' | '/notifications' | '/profile'
+  to:
+    | '/'
+    | '/about'
+    | '/login'
+    | '/notifications'
+    | '/profile'
+    | '/api/notification'
+    | '/api/notification-acknowledge'
+    | '/api/notification-history'
+    | '/api/notification-release'
+    | '/api/sensor-reading'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/login'
+    | '/notifications'
+    | '/profile'
+    | '/api/notification'
+    | '/api/notification-acknowledge'
+    | '/api/notification-history'
+    | '/api/notification-release'
+    | '/api/sensor-reading'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +154,11 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   ProfileRoute: typeof ProfileRoute
+  ApiNotificationRoute: typeof ApiNotificationRoute
+  ApiNotificationAcknowledgeRoute: typeof ApiNotificationAcknowledgeRoute
+  ApiNotificationHistoryRoute: typeof ApiNotificationHistoryRoute
+  ApiNotificationReleaseRoute: typeof ApiNotificationReleaseRoute
+  ApiSensorReadingRoute: typeof ApiSensorReadingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +198,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/notification': {
+      id: '/api/notification'
+      path: '/api/notification'
+      fullPath: '/api/notification'
+      preLoaderRoute: typeof ApiNotificationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notification-acknowledge': {
+      id: '/api/notification-acknowledge'
+      path: '/api/notification-acknowledge'
+      fullPath: '/api/notification-acknowledge'
+      preLoaderRoute: typeof ApiNotificationAcknowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notification-history': {
+      id: '/api/notification-history'
+      path: '/api/notification-history'
+      fullPath: '/api/notification-history'
+      preLoaderRoute: typeof ApiNotificationHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notification-release': {
+      id: '/api/notification-release'
+      path: '/api/notification-release'
+      fullPath: '/api/notification-release'
+      preLoaderRoute: typeof ApiNotificationReleaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/sensor-reading': {
+      id: '/api/sensor-reading'
+      path: '/api/sensor-reading'
+      fullPath: '/api/sensor-reading'
+      preLoaderRoute: typeof ApiSensorReadingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +242,11 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   ProfileRoute: ProfileRoute,
+  ApiNotificationRoute: ApiNotificationRoute,
+  ApiNotificationAcknowledgeRoute: ApiNotificationAcknowledgeRoute,
+  ApiNotificationHistoryRoute: ApiNotificationHistoryRoute,
+  ApiNotificationReleaseRoute: ApiNotificationReleaseRoute,
+  ApiSensorReadingRoute: ApiSensorReadingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

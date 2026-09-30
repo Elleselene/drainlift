@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -6,7 +6,6 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
-  Gauge,
   KeyRound,
   MapPin,
   RefreshCw,
@@ -23,7 +22,7 @@ import {
   StatCard,
   StatusPill,
 } from "@/components/dl/primitives";
-import { device, notifications } from "@/lib/drainlift";
+import { device } from "@/lib/drainlift";
 
 // Dashboard page (URL: "/").
 // Route definition: "head" = title at meta tags ng page, "component" = yung ipapakita
@@ -47,61 +46,186 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-// Custom hook para sa countdown timer (bumababa ng 1 kada segundo hanggang 0).
-// Ibinabalik yung natitirang "seconds" (para malaman kung kailan naabot ang 0)
-// pati yung "label" na naka-format na bilang "mm:ss", hal. 278 seconds = "04:38"
-function useCountdown(startSeconds: number) {
-  const [seconds, setSeconds] = useState(startSeconds);
+// Hugis ng estado na ibinabalik ng backend (src/lib/server/notification-store.ts) —
+// dapat tumugma ito sa NotificationDto doon.
+// Hugis ng bawat row na ibinabalik ng GET /api/notification-history (totoong audit log
+// galing sa Supabase, ginagamit ng preview table sa ibaba)
+type HistoryRow = {
+  id: string;
+  index: string;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  deviceId: string;
+  fillLevel: number;
+  status: "acknowledged" | "auto-released" | "released";
+};
+
+// Kunin ang pinakabagong 5 entries ng notification history — client-only fetch, dahil
+// hindi ito available sa SSR (walang env vars/session pa sa unang render pass)
+function useNotificationHistoryPreview() {
+  const [rows, setRows] = useState<HistoryRow[] | null>(null); // null = loading pa
   useEffect(() => {
-    const id = setInterval(() => setSeconds((s) => (s > 0 ? s - 1 : 0)), 1000);
-    // Cleanup: ihinto ang timer pag nag-unmount ang page
-    return () => clearInterval(id);
+    let cancelled = false;
+    fetch("/api/notification-history")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setRows((data.rows ?? []).slice(0, 5));
+      })
+      .catch(() => {
+        if (!cancelled) setRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-  // I-convert sa minutes at seconds, tapos lagyan ng leading zero (5 -> "05")
-  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
-  return { seconds, label: `${mm}:${ss}` };
+  return rows;
 }
 
-// Estado ng live alert:
-// "pending"      = tumatakbo pa ang countdown, hinihintay ang acknowledgment
-// "acknowledged" = na-acknowledge na ng barangay official, hindi na kailangan ng actuator
-// "released"     = na-activate na ang actuator (kusa pag naubos ang oras, o manual na command)
-type AlertState = "pending" | "acknowledged" | "released";
+type NotificationDto = {
+  wasteStatus: "FULL" | "NOT_FULL";
+  fillLevel: number;
+  notificationStatus: "NOT_SENT" | "SENT" | "ACKNOWLEDGED" | "EXPIRED";
+  notificationSentAt: number | null;
+  acknowledgedAt: number | null;
+  actuatorActive: boolean;
+  releasedAt: number | null;
+  releasedBy: "manual" | "auto" | null;
+  remainingSeconds: number;
+  windowSeconds: number;
+};
+
+// Custom hook na nag-poll sa backend (GET /api/notification) tuwing ilang segundo para
+// manatiling sync ang dashboard sa totoong estado — kahit ibang tao pa ang nag-acknowledge,
+// o totoong ultrasonic sensor na ang nagre-report. Dito rin nakalagay ang mga action
+// (acknowledge, release, simulate) na tumatawag sa backend.
+function useNotification() {
+  const [dto, setDto] = useState<NotificationDto | null>(null);
+  const [displaySeconds, setDisplaySeconds] = useState(0);
+
+  // I-save ang bagong estado galing sa backend, at i-sync ang display countdown dito
+  const applyDto = useCallback((next: NotificationDto) => {
+    setDto(next);
+    setDisplaySeconds(next.remainingSeconds);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notification");
+      if (res.ok) applyDto(await res.json());
+    } catch {
+      // Hayaan lang — susubukan ulit sa susunod na poll
+    }
+  }, [applyDto]);
+
+  // Poll ang backend paminsan-minsan (kada 4 segundo) para manatiling updated
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  // Sa pagitan ng bawat poll, ito ang nagbibigay ng smooth na pagbaba ng countdown kada segundo
+  useEffect(() => {
+    if (!dto || dto.notificationStatus !== "SENT") return;
+    const id = setInterval(() => setDisplaySeconds((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, [dto?.notificationStatus]);
+
+  async function post(url: string) {
+    const res = await fetch(url, { method: "POST" });
+    if (res.ok) applyDto(await res.json());
+    return res.ok;
+  }
+
+  async function reportReading(fillLevel: number) {
+    const res = await fetch("/api/sensor-reading", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fillLevel }),
+    });
+    if (res.ok) applyDto(await res.json());
+    return res.ok;
+  }
+
+  return {
+    dto,
+    displaySeconds,
+    acknowledge: () => post("/api/notification-acknowledge"),
+    release: () => post("/api/notification-release"),
+    simulateFull: () => reportReading(100),
+    simulateRemoved: () => reportReading(0),
+  };
+}
 
 function Dashboard() {
-  const [alertState, setAlertState] = useState<AlertState>("pending");
-  const { seconds, label: countdown } = useCountdown(278); // auto-release countdown (278 sec = 4:38)
+  const { dto, displaySeconds, acknowledge, release, simulateFull, simulateRemoved } =
+    useNotification();
+  const historyRows = useNotificationHistoryPreview(); // pinakabagong 5, galing sa Supabase
 
-  // Kapag naubos na ang countdown at hindi pa na-acknowledge, kusang mag-a-activate ang actuator
-  // (auto-release) tapos may lalabas na notification sa app.
+  // Pinipindot ng barangay official pag nakita na niya ang alert — itigil ang countdown,
+  // hindi na kailangang i-activate ang actuator (may backend logic na sa server na
+  // nagpe-prevent nito kapag na-release na, o expired na).
+  async function handleAcknowledge() {
+    const ok = await acknowledge();
+    if (ok) {
+      toast.success("Alert acknowledged", {
+        description: "Naka-log na sa backend. Hindi na kailangang i-activate ang actuator.",
+      });
+    }
+  }
+
+  // Manual na command: agad i-activate ang actuator, kahit tumatakbo pa ang countdown
+  async function handleActivateActuator() {
+    const ok = await release();
+    if (ok) {
+      toast.warning("Actuator activated", {
+        description: "Manual na na-activate ang actuator ng admin.",
+      });
+    }
+  }
+
+  // Bagong FULL reading (demo lang, habang wala pang totoong ultrasonic sensor na naka-connect)
+  async function handleSimulateFull() {
+    const ok = await simulateFull();
+    if (ok) {
+      toast.info("Sensor reading: FULL", {
+        description: "Bagong FULL event — magpapadala ng notification kung wala pang aktibo.",
+      });
+    }
+  }
+
+  // Simulate na naalis na ang basura — dito nag-re-reset ang buong notification cycle
+  async function handleSimulateRemoved() {
+    const ok = await simulateRemoved();
+    if (ok) {
+      toast.info("Sensor reading: NOT FULL", {
+        description: "Naalis na ang basura — na-reset ang notification cycle.",
+      });
+    }
+  }
+
+  // Kapag naubos na ang countdown (5 minuto) nang walang acknowledgment, ang server mismo
+  // (hindi ang browser) ang nagde-decide na mag-expire at kusang mag-a-activate ng actuator.
+  // Dito lang natin ipapakita yung toast sa unang pagkakataong makita natin ang bagong estado.
   useEffect(() => {
-    if (seconds === 0 && alertState === "pending") {
-      setAlertState("released");
+    if (dto?.notificationStatus === "EXPIRED" && dto.releasedBy === "auto") {
       toast.error("Actuator auto-activated", {
         description:
           "Walang acknowledgment sa loob ng 5 minuto. Kusang na-release ng DrainLift ang basura.",
       });
     }
-  }, [seconds, alertState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dto?.notificationStatus, dto?.releasedBy, dto?.notificationSentAt]);
 
-  // Pag na-acknowledge ng barangay official, itigil na ang countdown at hindi na kailangang
-  // gamitin ang actuator — may pupuntang tao para mangolekta nang manual.
-  function handleAcknowledge() {
-    setAlertState("acknowledged");
-    toast.success("Alert acknowledged", {
-      description: "Naka-log na. Hindi na kailangang i-activate ang actuator.",
-    });
-  }
+  const mm = String(Math.floor(displaySeconds / 60)).padStart(2, "0");
+  const ss = String(displaySeconds % 60).padStart(2, "0");
+  const countdown = `${mm}:${ss}`;
 
-  // Manual na command: pindutin ito ng admin para agad i-activate ang actuator
-  // kahit tumatakbo pa ang countdown (hal. emergency o hindi na aabot yung responder sa oras).
-  function handleActivateActuator() {
-    setAlertState("released");
-    toast.warning("Actuator activated", {
-      description: "Manual na na-activate ang actuator ng admin.",
-    });
-  }
+  // Habang wala pang unang response galing sa backend (client-only ang fetch na ito, kaya
+  // wala pa nito sa unang SSR render) — simpleng loading placeholder muna
+  const isLoading = dto === null;
+  const isActionable = dto?.notificationStatus === "SENT" && !dto.actuatorActive;
 
   return (
     <AppShell
@@ -113,72 +237,102 @@ function Dashboard() {
           <StatusPill tone="primary" className="hidden sm:inline-flex">
             System Online
           </StatusPill>
-          <Button variant="info">
+          {/* Iisang button para i-demo ang buong cycle: FULL -> ... -> removed -> NOT_FULL */}
+          <Button
+            variant="info"
+            onClick={dto?.wasteStatus === "FULL" ? handleSimulateRemoved : handleSimulateFull}
+            disabled={isLoading}
+          >
             <RefreshCw className="h-4 w-4" />
-            <span className="hidden sm:inline">Simulate Alert</span>
+            <span className="hidden sm:inline">
+              {dto?.wasteStatus === "FULL" ? "Mark Waste Removed" : "Simulate Alert"}
+            </span>
           </Button>
         </>
       }
     >
       <div className="space-y-5">
-        {/* Live alert: pulang card na nagsasabing puno na ang waste compartment */}
-        <Card className="dl-glow-alert border-destructive/40 p-4 sm:p-5">
-          <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-destructive/40 bg-destructive/15 text-destructive">
-              <AlertTriangle className="h-7 w-7" />
-            </span>
-            <div className="min-w-0">
-              {/* Nagbabago ang label depende sa kasalukuyang state ng alert */}
-              {alertState === "pending" && <StatusPill tone="danger">Live Alert</StatusPill>}
-              {alertState === "acknowledged" && (
-                <StatusPill tone="primary">Acknowledged</StatusPill>
-              )}
-              {alertState === "released" && (
-                <StatusPill tone="warning">Actuator Activated</StatusPill>
-              )}
-              <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                DrainLift Unit – Waste Full
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {alertState === "pending" &&
-                  "The waste compartment has reached maximum capacity. Immediate collection is required."}
-                {alertState === "acknowledged" &&
-                  "Acknowledged by a barangay official — a responder is on the way. Actuator will not be used."}
-                {alertState === "released" &&
-                  "The actuator has been activated and the compartment has been released."}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 lg:justify-end">
-              <div className="lg:border-r lg:border-border lg:pr-4">
-                <p className="dl-label">Auto-release in</p>
-                <p className="font-mono text-3xl font-bold text-destructive">
-                  {/* Tumatakbo lang ang countdown habang "pending" pa */}
-                  {alertState === "pending" ? countdown : "--:--"}
+        {/* Live alert card. Nagbabago ang itsura depende sa estadong galing sa backend */}
+        {isLoading ? (
+          <Card className="border-border p-4 sm:p-5">
+            <p className="text-sm text-muted-foreground">Loading current status…</p>
+          </Card>
+        ) : dto.wasteStatus === "NOT_FULL" ? (
+          // Walang aktibong alert — hindi pa FULL (o naalis na ang basura)
+          <Card className="border-primary/40 p-4 sm:p-5">
+            <div className="flex items-center gap-4">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-primary/40 bg-primary/15 text-primary">
+                <CheckCircle2 className="h-7 w-7" />
+              </span>
+              <div className="min-w-0">
+                <StatusPill tone="primary">All Clear</StatusPill>
+                <h2 className="mt-2 text-xl font-bold sm:text-2xl">
+                  Waste Compartment — Not Full
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Kasalukuyang fill level: {dto.fillLevel}%. Hinihintay ang susunod na FULL na
+                  reading mula sa ultrasonic sensor.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Acknowledge button: pag pinindot, hindi na kailangan ang actuator */}
-                <Button
-                  variant="primary"
-                  onClick={handleAcknowledge}
-                  disabled={alertState !== "pending"}
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {alertState === "acknowledged" ? "Acknowledged" : "Acknowledge Now"}
-                </Button>
-                {/* Activate Actuator: command para agad i-release, kahit hindi pa tapos ang countdown */}
-                <Button
-                  variant="danger"
-                  onClick={handleActivateActuator}
-                  disabled={alertState !== "pending"}
-                >
-                  <Zap className="h-4 w-4" />
-                  {alertState === "released" ? "Activated" : "Activate Actuator"}
-                </Button>
+            </div>
+          </Card>
+        ) : (
+          <Card className="dl-glow-alert border-destructive/40 p-4 sm:p-5">
+            <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-destructive/40 bg-destructive/15 text-destructive">
+                <AlertTriangle className="h-7 w-7" />
+              </span>
+              <div className="min-w-0">
+                {/* Nagbabago ang label depende sa kasalukuyang notification status */}
+                {dto.notificationStatus === "SENT" && (
+                  <StatusPill tone="danger">Live Alert</StatusPill>
+                )}
+                {dto.notificationStatus === "ACKNOWLEDGED" && (
+                  <StatusPill tone="primary">Acknowledged</StatusPill>
+                )}
+                {(dto.notificationStatus === "EXPIRED" || dto.actuatorActive) && (
+                  <StatusPill tone="warning">Actuator Activated</StatusPill>
+                )}
+                <h2 className="mt-2 text-xl font-bold sm:text-2xl">
+                  DrainLift Unit – Waste Full
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {dto.notificationStatus === "SENT" &&
+                    "The waste compartment has reached maximum capacity. Immediate collection is required."}
+                  {dto.notificationStatus === "ACKNOWLEDGED" &&
+                    "Acknowledged by a barangay official — a responder is on the way. Actuator will not be used."}
+                  {dto.notificationStatus === "EXPIRED" &&
+                    "The actuator has been activated and the compartment has been released."}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 lg:justify-end">
+                <div className="lg:border-r lg:border-border lg:pr-4">
+                  <p className="dl-label">Auto-release in</p>
+                  <p className="font-mono text-3xl font-bold text-destructive">
+                    {/* Tumatakbo lang ang countdown habang "SENT" pa (walang acknowledge/release) */}
+                    {dto.notificationStatus === "SENT" ? countdown : "--:--"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Acknowledge button: pag pinindot, hindi na kailangan ang actuator */}
+                  <Button variant="primary" onClick={handleAcknowledge} disabled={!isActionable}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    {dto.notificationStatus === "ACKNOWLEDGED" ? "Acknowledged" : "Acknowledge Now"}
+                  </Button>
+                  {/* Activate Actuator: command para agad i-release, kahit hindi pa tapos ang countdown */}
+                  <Button
+                    variant="danger"
+                    onClick={handleActivateActuator}
+                    disabled={!isActionable}
+                  >
+                    <Zap className="h-4 w-4" />
+                    {dto.actuatorActive ? "Activated" : "Activate Actuator"}
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {/* Device info: owner, installation date, device number, at location */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -204,24 +358,28 @@ function Dashboard() {
           />
         </div>
 
-        {/* Summary: bilang ng notifications ngayong araw */}
+        {/* Summary: totoong bilang galing sa Supabase audit log (buong history, hindi lang "today") */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard value={5} label="Notifications Today" icon={<Bell className="h-5 w-5" />} />
           <StatCard
-            value={1}
-            label="Acknowledged Today"
+            value={historyRows?.length ?? "—"}
+            label="Recent Notifications"
+            icon={<Bell className="h-5 w-5" />}
+          />
+          <StatCard
+            value={historyRows?.filter((r) => r.status === "acknowledged").length ?? "—"}
+            label="Acknowledged"
             icon={<CheckCircle2 className="h-5 w-5" />}
             tone="primary"
           />
           <StatCard
-            value={3}
-            label="Auto-Released Today"
+            value={historyRows?.filter((r) => r.status !== "acknowledged").length ?? "—"}
+            label="Actuator Activated"
             icon={<AlertTriangle className="h-5 w-5" />}
             tone="warning"
           />
         </div>
 
-        {/* Notification history: table ng mga alerts galing sa dummy data */}
+        {/* Notification history: pinakabagong 5 entries, totoong data galing sa Supabase */}
         <div className="space-y-3">
           <SectionTitle>Notification History</SectionTitle>
           <Card className="overflow-x-auto">
@@ -239,8 +397,24 @@ function Dashboard() {
                 </tr>
               </thead>
               <tbody>
+                {/* Habang hinihintay pa ang response galing sa backend */}
+                {historyRows === null && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      Loading notification history…
+                    </td>
+                  </tr>
+                )}
+                {/* Wala pang naka-log na history (bagong Supabase project, walang laman pa) */}
+                {historyRows !== null && historyRows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      No notifications yet.
+                    </td>
+                  </tr>
+                )}
                 {/* Isang row para sa bawat notification */}
-                {notifications.map((n) => (
+                {historyRows?.map((n) => (
                   <tr key={n.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-mono text-muted-foreground">{n.index}</td>
                     <td className="px-4 py-3">
@@ -255,18 +429,16 @@ function Dashboard() {
                         <span className="font-mono text-xs">{n.fillLevel}%</span>
                       </div>
                     </td>
-                    {/* Iba-iba ang lalabas depende sa status ng notification */}
+                    {/* Bawat row dito ay laging RESOLVED na (acknowledged o released) */}
                     <td className="px-4 py-3">
-                      {n.status === "pending" && (
-                        <Button variant="primary" className="px-2.5 py-1.5 text-xs">
-                          <Gauge className="h-3.5 w-3.5" /> Acknowledge
-                        </Button>
-                      )}
                       {n.status === "acknowledged" && (
                         <StatusPill tone="primary">Acknowledged</StatusPill>
                       )}
                       {n.status === "auto-released" && (
                         <StatusPill tone="warning">Auto-Released</StatusPill>
+                      )}
+                      {n.status === "released" && (
+                        <StatusPill tone="warning">Actuator Activated</StatusPill>
                       )}
                     </td>
                   </tr>

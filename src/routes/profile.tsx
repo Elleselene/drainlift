@@ -19,9 +19,10 @@ import {
   StatusPill,
 } from "@/components/dl/primitives";
 import { useAppState } from "@/lib/app-state";
-import { currentUser, device } from "@/lib/drainlift";
+import { device, initialsOf } from "@/lib/drainlift";
 
-// Profile page (URL: "/profile"): info ng admin at ng device, may edit form para sa account
+// Profile page (URL: "/profile"): info ng admin (galing sa Supabase) at ng device, may edit
+// form para sa account
 export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [
@@ -42,10 +43,11 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfilePage() {
-  const { profile, updateProfile, signOut } = useAppState();
+  const { profile, email, updateProfile, signOut } = useAppState();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false); // nakabukas ba yung edit form
   const [draft, setDraft] = useState(profile); // pansamantalang laman ng form (hindi pa saved)
+  const [saveError, setSaveError] = useState(""); // error galing sa Supabase, kung meron
 
   return (
     <AppShell title="Admin Profile" subtitle="Facility administrator information">
@@ -54,15 +56,13 @@ function ProfilePage() {
         <Card className="p-5 sm:p-6">
           <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
             <span className="grid h-20 w-20 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-info to-primary font-mono text-xl font-bold text-primary-foreground">
-              {currentUser.initials}
+              {initialsOf(profile.name || "Admin")}
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-2xl font-bold">{profile.name}</h2>
-              <p className="font-mono text-xs text-muted-foreground">
-                {currentUser.handle}
-              </p>
+              <p className="font-mono text-xs text-muted-foreground">{email}</p>
               <StatusPill tone="primary" className="mt-2">
-                {currentUser.role}
+                {profile.role}
               </StatusPill>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -70,6 +70,7 @@ function ProfilePage() {
               <Button
                 onClick={() => {
                   setDraft(profile);
+                  setSaveError("");
                   setEditing((e) => !e);
                 }}
               >
@@ -78,8 +79,8 @@ function ProfilePage() {
               {/* Logout: i-sign out tapos balik sa login page */}
               <Button
                 variant="danger"
-                onClick={() => {
-                  signOut();
+                onClick={async () => {
+                  await signOut();
                   navigate({ to: "/login" });
                 }}
               >
@@ -95,18 +96,25 @@ function ProfilePage() {
             <SectionTitle>Edit Account</SectionTitle>
             <form
               className="mt-4 grid gap-4 sm:grid-cols-2"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                updateProfile(draft); // i-save yung pinalitan
+                const { error } = await updateProfile(draft); // i-save papunta sa Supabase
+                if (error) {
+                  setSaveError(error);
+                  return;
+                }
+                setSaveError("");
                 setEditing(false); // isara na yung form
               }}
             >
-              {/* Name, Email, at Phone fields (gumamit ng array para hindi paulit-ulit ang code) */}
+              {/* Name, Phone, at Role fields (gumamit ng array para hindi paulit-ulit ang code).
+                  Ang Email ay hindi na dito na-e-edit — galing na ito sa Supabase Auth account
+                  mismo, kaya iba ang proseso para palitan ito (kailangan ng re-verification). */}
               {(
                 [
                   ["Name", "name"],
-                  ["Email", "email"],
                   ["Phone", "phone"],
+                  ["Role", "role"],
                 ] as const
               ).map(([label, key]) => (
                 <label key={key} className="block">
@@ -118,15 +126,18 @@ function ProfilePage() {
                   />
                 </label>
               ))}
-              {/* Password field: design lang muna, wala pang backend kaya hindi pa nase-save */}
+              {/* Read-only na Email, para malinaw kung saang account naka-login */}
               <label className="block">
-                <span className="dl-label">New Password</span>
+                <span className="dl-label">Email (hindi na-e-edit dito)</span>
                 <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:border-primary"
+                  value={email}
+                  disabled
+                  className="mt-1.5 w-full rounded-lg border border-input bg-muted px-3 py-2 font-mono text-sm text-muted-foreground outline-none"
                 />
               </label>
+              {saveError && (
+                <p className="text-xs text-destructive sm:col-span-2">{saveError}</p>
+              )}
               <div className="flex gap-2 sm:col-span-2">
                 <Button variant="primary" type="submit">
                   Save Changes
@@ -161,11 +172,7 @@ function ProfilePage() {
               value={device.installationDate}
               icon={<Calendar className="h-4 w-4" />}
             />
-            <InfoCard
-              label="Email"
-              value={profile.email}
-              icon={<Mail className="h-4 w-4" />}
-            />
+            <InfoCard label="Email" value={email} icon={<Mail className="h-4 w-4" />} />
             <InfoCard
               label="Phone"
               value={profile.phone}

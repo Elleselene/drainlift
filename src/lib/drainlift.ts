@@ -71,74 +71,10 @@ export const subsystems: SubsystemStatus[] = [
   { name: "Database", state: "online", detail: "Simulated store" },
 ];
 
-// Isang row sa notification history table
-// status: pending = hindi pa na-acknowledge, auto-released = kusang nag-release
-// yung unit kasi walang nag-acknowledge sa loob ng 5 minutes
-export type NotificationRow = {
-  id: string;
-  index: string;
-  title: string;
-  subtitle: string;
-  timestamp: string;
-  deviceId: string;
-  fillLevel: number;
-  status: "pending" | "acknowledged" | "auto-released";
-  countdown?: string;
-};
-
-// Sample na notifications (dummy data para sa dashboard at notifications page)
-export const notifications: NotificationRow[] = [
-  {
-    id: "n1",
-    index: "01",
-    title: "DrainLift Unit – Waste Full",
-    subtitle: "Fill level reached 100%",
-    timestamp: "2026-08-12 12:49",
-    deviceId: "DL-2026-001",
-    fillLevel: 100,
-    status: "pending",
-  },
-  {
-    id: "n2",
-    index: "02",
-    title: "DrainLift Unit – Waste Full",
-    subtitle: "Fill level reached 100%",
-    timestamp: "2026-08-12 12:31",
-    deviceId: "DL-2026-001",
-    fillLevel: 100,
-    status: "auto-released",
-  },
-  {
-    id: "n3",
-    index: "03",
-    title: "DrainLift Unit – Waste Full",
-    subtitle: "Fill level reached 100%",
-    timestamp: "2026-08-12 11:58",
-    deviceId: "DL-2026-001",
-    fillLevel: 100,
-    status: "acknowledged",
-  },
-  {
-    id: "n4",
-    index: "04",
-    title: "Compartment Nearing Capacity",
-    subtitle: "Fill level reached 92%",
-    timestamp: "2026-08-12 11:20",
-    deviceId: "DL-2026-001",
-    fillLevel: 92,
-    status: "auto-released",
-  },
-  {
-    id: "n5",
-    index: "05",
-    title: "Compartment Nearing Capacity",
-    subtitle: "Fill level reached 78%",
-    timestamp: "2026-08-12 09:44",
-    deviceId: "DL-2026-001",
-    fillLevel: 78,
-    status: "auto-released",
-  },
-];
+// Paalala: ang totoong notification history (audit log) ay galing na sa Supabase —
+// tingnan ang src/lib/server/notification-store.ts at GET /api/notification-history.
+// Dating may dummy na "notifications" array dito, tinanggal na dahil live data na ang
+// ginagamit ng "/notifications" page at ng preview sa Dashboard.
 
 // Result ng AI garbage detection (uri ng basura, ilan, at gaano ka-sure)
 export type Detection = {
