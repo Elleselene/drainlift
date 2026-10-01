@@ -205,6 +205,9 @@ export async function releaseNotification(): Promise<NotificationDto> {
     !current.actuator_active
   ) {
     const updated = await saveRow({
+      // Resolve the active notification immediately when Release Now is pressed.
+      // released_by still distinguishes manual release from auto-release.
+      notification_status: "EXPIRED",
       actuator_active: true,
       released_at: new Date().toISOString(),
       released_by: "manual",
