@@ -326,7 +326,7 @@ function Dashboard() {
                     disabled={!isActionable}
                   >
                     <Zap className="h-4 w-4" />
-                    {dto.actuatorActive ? "Released" : "Release"}
+                    {dto.actuatorActive ? "Released" : "Release Now"}
                   </Button>
                 </div>
               </div>
