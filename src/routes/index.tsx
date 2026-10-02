@@ -228,13 +228,10 @@ function Dashboard() {
   const isLoading = dto === null;
 
 const showReleaseButton =
-  (dto?.fillLevel ?? 0) >= 50 &&
-  dto?.actuatorActive === false;
+  (dto?.fillLevel ?? 0) >= 50;
 
-  const showAcknowledgeButton =
-    dto?.fillLevel === 100 &&
-    dto?.notificationStatus === "SENT" &&
-    !dto?.actuatorActive;
+const showAcknowledgeButton =
+  dto?.fillLevel === 100;
 
 
   return (
