@@ -229,7 +229,7 @@ function Dashboard() {
 
 const showReleaseButton =
   (dto?.fillLevel ?? 0) >= 50 &&
-  dto?.releaseArmed === true;
+  dto?.actuatorActive === false;
 
   const showAcknowledgeButton =
     dto?.fillLevel === 100 &&

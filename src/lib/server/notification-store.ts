@@ -137,12 +137,12 @@ async function applyExpiry(row: StateRow): Promise<StateRow> {
       notification_status: "EXPIRED",
     };
 
-    if (!row.actuator_active && row.release_armed) {
-      patch.actuator_active = true;
-      patch.release_armed = false;
-      patch.released_at = new Date().toISOString();
-      patch.released_by = "auto";
-    }
+  if (!row.actuator_active) {
+    patch.actuator_active = true;
+    patch.release_armed = false;
+    patch.released_at = new Date().toISOString();
+    patch.released_by = "auto";
+  }
 
     const updated = await saveRow(patch);
     await logHistory(updated);
@@ -205,11 +205,10 @@ export async function acknowledgeNotification(): Promise<NotificationDto> {
 export async function releaseNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
 
-  if (
-    current.fill_level >= 50 &&
-    !current.actuator_active &&
-    current.release_armed
-  ) {
+if (
+  current.fill_level >= 50 &&
+  !current.actuator_active
+) {
     const patch: Partial<StateRow> = {
       actuator_active: true,
       release_armed: false,
