@@ -280,8 +280,8 @@ const showReleaseButton =
                   Waste Compartment — Not Full
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Kasalukuyang fill level: {dto.fillLevel}%. Hinihintay ang susunod na FULL na
-                  reading mula sa ultrasonic sensor.
+                 Current <strong>Fill Level: {dto.fillLevel}%</strong>. 
+                 Monitoring the ultrasonic sensor for a full-compartment reading.
                 </p>
               </div>
               {showReleaseButton && (
