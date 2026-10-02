@@ -126,6 +126,7 @@ async function logHistory(row: StateRow) {
 // walang acknowledgment, nag-expire na ang notification cycle — at kusang mag-a-activate ang
 // actuator (auto-release).
 
+
 async function applyExpiry(row: StateRow): Promise<StateRow> {
   const sentAt = toEpoch(row.notification_sent_at);
 
@@ -167,9 +168,16 @@ export async function reportSensorReading(fillLevel: number): Promise<Notificati
     waste_status: nextStatus,
   };
 
-  if (clamped < 50 && !current.actuator_active) {
-    patch.release_armed = true;
-  }
+    if (clamped < 50) {
+      // New cycle: clear the previous notification/release state.
+      patch.notification_status = "NOT_SENT";
+      patch.notification_sent_at = null;
+      patch.acknowledged_at = null;
+      patch.released_at = null;
+      patch.released_by = null;
+      patch.release_armed = true;
+      patch.actuator_active = false;
+    }
 
   if (nextStatus === "FULL") {
     if (current.notification_status === "NOT_SENT") {
@@ -187,7 +195,7 @@ export async function reportSensorReading(fillLevel: number): Promise<Notificati
 // ng actuator, at hindi na dapat magpadala ulit ng notification habang FULL pa rin.
 export async function acknowledgeNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
-  if (current.notification_status === "SENT" && !current.actuator_active) {
+if (current.notification_status === "SENT") {
     const updated = await saveRow({
       notification_status: "ACKNOWLEDGED",
       acknowledged_at: new Date().toISOString(),
