@@ -329,6 +329,17 @@ function Dashboard() {
                   {isReleased && isAutoReleased &&
                     "The waste was released automatically after the 5-minute countdown expired."}
                 </p>
+                {dto.notificationStatus === "SENT" && (
+                <div className="mt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Automatic Release In
+                  </p>
+
+                  <p className="font-mono text-3xl font-bold text-destructive">
+                    {countdown}
+                  </p>
+                </div>
+              )}
               </div>
              <div className="flex flex-wrap items-center gap-2">
                 {showAcknowledgeButton && (
