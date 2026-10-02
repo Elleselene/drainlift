@@ -328,7 +328,8 @@ function Dashboard() {
                       "The waste compartment has reached maximum capacity. Immediate collection is required."}
 
                     {dto.notificationStatus === "ACKNOWLEDGED" &&
-                      "Acknowledged by a barangay official — a responder is on the way. Actuator will not be used."}
+                     "The alert has been acknowledged by a barangay official."
+                    }
 
                     {isReleased && !isAutoReleased &&
                       "The waste has been released manually."}
@@ -363,14 +364,14 @@ function Dashboard() {
                     </Button>
                   )}
 
-                  {showReleaseButton && (
+                {showReleaseButton && (
                     <Button
                       variant="danger"
                       onClick={handleRelease}
-                      disabled={isReleased || dto.notificationStatus === "ACKNOWLEDGED"}
+                      disabled={isReleased}
                     >
                       <Zap className="h-4 w-4" />
-                      {isReleased ? "Released" : "Activate Actuator"}
+                      {isReleased ? "Released" : "Release Now"}
                     </Button>
                   )}
                 </div>
