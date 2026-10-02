@@ -177,14 +177,15 @@ function Dashboard() {
   }
 
   // Manual na command: agad i-activate ang actuator, kahit tumatakbo pa ang countdown
-  async function handleActivateActuator() {
-    const ok = await release();
-    if (ok) {
-      toast.warning("Actuator activated", {
-        description: "Manual na na-activate ang actuator ng admin.",
-      });
+    async function handleActivateActuator() {
+      const ok = await release();
+
+      if (ok) {
+        toast.success("Released", {
+          description: "The release request has been successfully recorded.",
+        });
+      }
     }
-  }
 
   // Bagong FULL reading (demo lang, habang wala pang totoong ultrasonic sensor na naka-connect)
   async function handleSimulateFull() {
@@ -227,11 +228,14 @@ function Dashboard() {
   // wala pa nito sa unang SSR render) — simpleng loading placeholder muna
   const isLoading = dto === null;
 
-const showReleaseButton =
-  (dto?.fillLevel ?? 0) >= 50;
+  const showReleaseButton =
+    (dto?.fillLevel ?? 0) >= 50;
 
-const showAcknowledgeButton =
-  dto?.fillLevel === 100;
+  const showAcknowledgeButton =
+    dto?.fillLevel === 100;
+
+  const isReleased =
+  dto?.releasedAt !== null;
 
 
   return (
@@ -284,15 +288,15 @@ const showAcknowledgeButton =
               Monitoring the ultrasonic sensor for a full-compartment reading.
                 </p>
               </div>
-              {showReleaseButton && (
+            {showReleaseButton && (
                 <Button
                   variant="danger"
                   onClick={handleActivateActuator}
-                  disabled={dto.actuatorActive}
+                  disabled={isReleased}
                   className="ml-auto"
                 >
                   <Zap className="h-4 w-4" />
-                  {dto.actuatorActive ? "Released" : "Release Now"}
+                  {isReleased ? "Released" : "Release Now"}
                 </Button>
               )}
             </div>
@@ -327,21 +331,23 @@ const showAcknowledgeButton =
                 </p>
               </div>
              <div className="flex flex-wrap items-center gap-2">
-                  {showAcknowledgeButton && (
-                    <Button
-                      variant="primary"
-                      onClick={handleAcknowledge}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Acknowledge Now
-                    </Button>
-                  )}
+                {showAcknowledgeButton && (
+                  <Button
+                    variant="primary"
+                    onClick={handleAcknowledge}
+                    disabled={isReleased}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Acknowledge Now
+                  </Button>
+                )}
 
-                  {showReleaseButton && (
+               {showReleaseButton && (
                     <Button
                       variant="danger"
                       onClick={handleActivateActuator}
                       disabled={dto.actuatorActive}
+                      className="ml-auto"
                     >
                       <Zap className="h-4 w-4" />
                       {dto.actuatorActive ? "Released" : "Release Now"}

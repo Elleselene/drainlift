@@ -128,24 +128,21 @@ async function logHistory(row: StateRow) {
 async function applyExpiry(row: StateRow): Promise<StateRow> {
   const sentAt = toEpoch(row.notification_sent_at);
 
-if (
-  row.notification_status === "SENT" &&
-  row.fill_level >= FULL_THRESHOLD &&
-  sentAt !== null &&
-  Date.now() - sentAt >= NOTIFICATION_WINDOW_MS
-) {
-    const patch: Partial<StateRow> = {
+async function applyExpiry(row: StateRow): Promise<StateRow> {
+  const sentAt = toEpoch(row.notification_sent_at);
+
+  if (
+    row.notification_status === "SENT" &&
+    row.fill_level >= FULL_THRESHOLD &&
+    sentAt !== null &&
+    Date.now() - sentAt >= NOTIFICATION_WINDOW_MS
+  ) {
+    const updated = await saveRow({
       notification_status: "EXPIRED",
-    };
+      released_at: new Date().toISOString(),
+      released_by: "auto",
+    });
 
-  if (!row.actuator_active) {
-    patch.actuator_active = true;
-    patch.release_armed = false;
-    patch.released_at = new Date().toISOString();
-    patch.released_by = "auto";
-  }
-
-    const updated = await saveRow(patch);
     await logHistory(updated);
     return updated;
   }
@@ -206,14 +203,11 @@ export async function acknowledgeNotification(): Promise<NotificationDto> {
 export async function releaseNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
 
-    if (current.fill_level >= 50) {
-      
-        const patch: Partial<StateRow> = {
-          actuator_active: true,
-          release_armed: false,
-          released_at: new Date().toISOString(),
-          released_by: "manual",
-        };
+  if (current.fill_level >= 50) {
+    const patch: Partial<StateRow> = {
+      released_at: new Date().toISOString(),
+      released_by: "manual",
+    };
 
     if (current.fill_level >= FULL_THRESHOLD) {
       patch.notification_status = "EXPIRED";
