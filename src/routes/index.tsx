@@ -299,69 +299,78 @@ function Dashboard() {
           </Card>
         ) : (
           <Card className="dl-glow-alert border-destructive/40 p-4 sm:p-5">
-            <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+         <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto_auto] lg:items-center">
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-destructive/40 bg-destructive/15 text-destructive">
                 <AlertTriangle className="h-7 w-7" />
               </span>
-              <div className="min-w-0">
-                {/* Nagbabago ang label depende sa kasalukuyang notification status */}
-                {dto.notificationStatus === "SENT" && (
-                  <StatusPill tone="danger">Live Alert</StatusPill>
-                )}
-                {dto.notificationStatus === "ACKNOWLEDGED" && (
-                  <StatusPill tone="primary">Acknowledged</StatusPill>
-                )}
-              {isReleased && (
-                <StatusPill tone="warning">
-                  {isAutoReleased ? "Released Automatically" : "Released"}
-                </StatusPill>
-              )}
-                <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                  DrainLift Unit – Waste Full
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {dto.notificationStatus === "SENT" &&
-                    "The waste compartment has reached maximum capacity. Immediate collection is required."}
-                  {dto.notificationStatus === "ACKNOWLEDGED" &&
-                    "The alert has been acknowledged by a barangay official."}
-                  {isReleased && !isAutoReleased &&
-                    "The waste has been released manually."}
-                  {isReleased && isAutoReleased &&
-                    "The waste was released automatically after the 5-minute countdown expired."}
-                </p>
-                {dto.notificationStatus === "SENT" && (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Automatic Release In
-                  </p>
+            <div className="min-w-0">
+                  {/* Nagbabago ang label depende sa kasalukuyang notification status */}
+                  {dto.notificationStatus === "SENT" && (
+                    <StatusPill tone="danger">Live Alert</StatusPill>
+                  )}
 
-                  <p className="font-mono text-3xl font-bold text-destructive">
-                    {countdown}
+                  {dto.notificationStatus === "ACKNOWLEDGED" && (
+                    <StatusPill tone="primary">Acknowledged</StatusPill>
+                  )}
+
+                  {isReleased && (
+                    <StatusPill tone="warning">
+                      {isAutoReleased ? "Released Automatically" : "Released"}
+                    </StatusPill>
+                  )}
+
+                  <h2 className="mt-2 text-xl font-bold sm:text-2xl">
+                    DrainLift Unit – Waste Full
+                  </h2>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {dto.notificationStatus === "SENT" &&
+                      "The waste compartment has reached maximum capacity. Immediate collection is required."}
+
+                    {dto.notificationStatus === "ACKNOWLEDGED" &&
+                      "Acknowledged by a barangay official — a responder is on the way. Actuator will not be used."}
+
+                    {isReleased && !isAutoReleased &&
+                      "The waste has been released manually."}
+
+                    {isReleased && isAutoReleased &&
+                      "The waste was released automatically after the 5-minute countdown expired."}
                   </p>
                 </div>
-              )}
-              </div>
-             <div className="flex flex-wrap items-center gap-2">
-                {showAcknowledgeButton && (
-                  <Button
-                    variant="primary"
-                    onClick={handleAcknowledge}
-                    disabled={isReleased}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Acknowledge Now
-                  </Button>
-                )}
 
-               {showReleaseButton && (
+                {/* Countdown — nasa sariling column sa pagitan ng alert info at buttons */}
+                <div className="shrink-0 border-l border-border pl-7 pr-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Auto-Release In
+                  </p>
+
+                  <p className="mt-1 font-mono text-3xl font-bold text-destructive">
+                    {dto.notificationStatus === "SENT" ? countdown : "--:--"}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {showAcknowledgeButton && (
+                    <Button
+                      variant="primary"
+                      onClick={handleAcknowledge}
+                      disabled={isReleased || dto.notificationStatus !== "SENT"}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {dto.notificationStatus === "ACKNOWLEDGED"
+                        ? "Acknowledged"
+                        : "Acknowledge Now"}
+                    </Button>
+                  )}
+
+                  {showReleaseButton && (
                     <Button
                       variant="danger"
                       onClick={handleRelease}
-                      disabled={isReleased}
-                      className="ml-auto"
+                      disabled={isReleased || dto.notificationStatus === "ACKNOWLEDGED"}
                     >
                       <Zap className="h-4 w-4" />
-                      {isReleased ? "Released" : "Release Now"}
+                      {isReleased ? "Released" : "Activate Actuator"}
                     </Button>
                   )}
                 </div>
