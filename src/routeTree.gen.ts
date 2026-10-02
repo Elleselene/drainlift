@@ -18,6 +18,7 @@ import { Route as ApiNotificationRouteImport } from './routes/api/notification'
 import { Route as ApiNotificationAcknowledgeRouteImport } from './routes/api/notification-acknowledge'
 import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notification-history'
 import { Route as ApiNotificationReleaseRouteImport } from './routes/api/notification-release'
+import { Route as ApiReleaseCompleteRouteImport } from './routes/api/release-complete'
 import { Route as ApiSensorReadingRouteImport } from './routes/api/sensor-reading'
 
 const IndexRoute = IndexRouteImport.update({
@@ -66,6 +67,11 @@ const ApiNotificationReleaseRoute = ApiNotificationReleaseRouteImport.update({
   path: '/api/notification-release',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReleaseCompleteRoute = ApiReleaseCompleteRouteImport.update({
+  id: '/api/release-complete',
+  path: '/api/release-complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSensorReadingRoute = ApiSensorReadingRouteImport.update({
   id: '/api/sensor-reading',
   path: '/api/sensor-reading',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
   '/api/notification-release': typeof ApiNotificationReleaseRoute
+  '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
 }
 export interface FileRoutesByTo {
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
   '/api/notification-release': typeof ApiNotificationReleaseRoute
+  '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
 }
 export interface FileRoutesById {
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
   '/api/notification-release': typeof ApiNotificationReleaseRoute
+  '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
 }
 export interface FileRouteTypes {
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/api/notification-acknowledge'
     | '/api/notification-history'
     | '/api/notification-release'
+    | '/api/release-complete'
     | '/api/sensor-reading'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/api/notification-acknowledge'
     | '/api/notification-history'
     | '/api/notification-release'
+    | '/api/release-complete'
     | '/api/sensor-reading'
   id:
     | '__root__'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/api/notification-acknowledge'
     | '/api/notification-history'
     | '/api/notification-release'
+    | '/api/release-complete'
     | '/api/sensor-reading'
   fileRoutesById: FileRoutesById
 }
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   ApiNotificationAcknowledgeRoute: typeof ApiNotificationAcknowledgeRoute
   ApiNotificationHistoryRoute: typeof ApiNotificationHistoryRoute
   ApiNotificationReleaseRoute: typeof ApiNotificationReleaseRoute
+  ApiReleaseCompleteRoute: typeof ApiReleaseCompleteRoute
   ApiSensorReadingRoute: typeof ApiSensorReadingRoute
 }
 
@@ -226,6 +239,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNotificationReleaseRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/release-complete': {
+      id: '/api/release-complete'
+      path: '/api/release-complete'
+      fullPath: '/api/release-complete'
+      preLoaderRoute: typeof ApiReleaseCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/sensor-reading': {
       id: '/api/sensor-reading'
       path: '/api/sensor-reading'
@@ -246,6 +266,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationAcknowledgeRoute: ApiNotificationAcknowledgeRoute,
   ApiNotificationHistoryRoute: ApiNotificationHistoryRoute,
   ApiNotificationReleaseRoute: ApiNotificationReleaseRoute,
+  ApiReleaseCompleteRoute: ApiReleaseCompleteRoute,
   ApiSensorReadingRoute: ApiSensorReadingRoute,
 }
 export const routeTree = rootRouteImport

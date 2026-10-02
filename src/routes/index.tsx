@@ -89,6 +89,7 @@ type NotificationDto = {
   notificationSentAt: number | null;
   acknowledgedAt: number | null;
   actuatorActive: boolean;
+  releaseArmed: boolean;
   releasedAt: number | null;
   releasedBy: "manual" | "auto" | null;
   remainingSeconds: number;
@@ -225,7 +226,16 @@ function Dashboard() {
   // Habang wala pang unang response galing sa backend (client-only ang fetch na ito, kaya
   // wala pa nito sa unang SSR render) — simpleng loading placeholder muna
   const isLoading = dto === null;
-  const isActionable = dto?.notificationStatus === "SENT" && !dto.actuatorActive;
+
+const showReleaseButton =
+  (dto?.fillLevel ?? 0) >= 50 &&
+  dto?.releaseArmed === true;
+
+  const showAcknowledgeButton =
+    dto?.fillLevel === 100 &&
+    dto?.notificationStatus === "SENT" &&
+    !dto?.actuatorActive;
+
 
   return (
     <AppShell
@@ -274,6 +284,17 @@ function Dashboard() {
                   reading mula sa ultrasonic sensor.
                 </p>
               </div>
+              {showReleaseButton && (
+                <Button
+                  variant="danger"
+                  onClick={handleActivateActuator}
+                  disabled={dto.actuatorActive}
+                  className="ml-auto"
+                >
+                  <Zap className="h-4 w-4" />
+                  {dto.actuatorActive ? "Released" : "Release Now"}
+                </Button>
+              )}
             </div>
           </Card>
         ) : (
@@ -305,32 +326,29 @@ function Dashboard() {
                     "The actuator has been activated and the compartment has been released."}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-4 lg:justify-end">
-                <div className="lg:border-r lg:border-border lg:pr-4">
-                  <p className="dl-label">Auto-release in</p>
-                  <p className="font-mono text-3xl font-bold text-destructive">
-                    {/* Tumatakbo lang ang countdown habang "SENT" pa (walang acknowledge/release) */}
-                    {dto.notificationStatus === "SENT" ? countdown : "--:--"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Acknowledge button: pag pinindot, hindi na kailangan ang actuator */}
-                  <Button variant="primary" onClick={handleAcknowledge} disabled={!isActionable}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    {dto.notificationStatus === "ACKNOWLEDGED" ? "Acknowledged" : "Acknowledge Now"}
-                  </Button>
-                  {/* Activate Actuator: command para agad i-release, kahit hindi pa tapos ang countdown */}
-                  <Button
-                    variant="danger"
-                    onClick={handleActivateActuator}
-                    disabled={!isActionable}
-                  >
-                    <Zap className="h-4 w-4" />
-                    {dto.actuatorActive ? "Released" : "Release Now"}
-                  </Button>
+             <div className="flex flex-wrap items-center gap-2">
+                  {showAcknowledgeButton && (
+                    <Button
+                      variant="primary"
+                      onClick={handleAcknowledge}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Acknowledge Now
+                    </Button>
+                  )}
+
+                  {showReleaseButton && (
+                    <Button
+                      variant="danger"
+                      onClick={handleActivateActuator}
+                      disabled={dto.actuatorActive}
+                    >
+                      <Zap className="h-4 w-4" />
+                      {dto.actuatorActive ? "Released" : "Release Now"}
+                    </Button>
+                  )}
                 </div>
               </div>
-            </div>
           </Card>
         )}
 

@@ -35,6 +35,7 @@ type StateRow = {
   notification_sent_at: string | null; // ISO timestamp
   acknowledged_at: string | null;
   actuator_active: boolean;
+  release_armed: boolean;
   released_at: string | null;
   released_by: ReleasedBy;
 };
@@ -47,6 +48,7 @@ export type NotificationDto = {
   notificationSentAt: number | null; // epoch ms, mas madaling gamitin sa frontend
   acknowledgedAt: number | null;
   actuatorActive: boolean;
+  releaseArmed: boolean;
   releasedAt: number | null;
   releasedBy: ReleasedBy;
   remainingSeconds: number;
@@ -67,6 +69,7 @@ function toDto(row: StateRow): NotificationDto {
     notificationSentAt: sentAt,
     acknowledgedAt: toEpoch(row.acknowledged_at),
     actuatorActive: row.actuator_active,
+    releaseArmed: row.release_armed,
     releasedAt: toEpoch(row.released_at),
     releasedBy: row.released_by,
     remainingSeconds: Math.ceil(remainingMs / 1000),
@@ -124,21 +127,28 @@ async function logHistory(row: StateRow) {
 // actuator (auto-release).
 async function applyExpiry(row: StateRow): Promise<StateRow> {
   const sentAt = toEpoch(row.notification_sent_at);
+
   if (
     row.notification_status === "SENT" &&
     sentAt !== null &&
     Date.now() - sentAt >= NOTIFICATION_WINDOW_MS
   ) {
-    const patch: Partial<StateRow> = { notification_status: "EXPIRED" };
-    if (!row.actuator_active) {
+    const patch: Partial<StateRow> = {
+      notification_status: "EXPIRED",
+    };
+
+    if (!row.actuator_active && row.release_armed) {
       patch.actuator_active = true;
+      patch.release_armed = false;
       patch.released_at = new Date().toISOString();
       patch.released_by = "auto";
     }
+
     const updated = await saveRow(patch);
     await logHistory(updated);
     return updated;
   }
+
   return row;
 }
 
@@ -155,9 +165,15 @@ export async function reportSensorReading(fillLevel: number): Promise<Notificati
 
   const clamped = Math.max(0, Math.min(100, fillLevel));
   const nextStatus: WasteStatus = clamped >= FULL_THRESHOLD ? "FULL" : "NOT_FULL";
-  const wasFull = current.waste_status === "FULL";
 
-  const patch: Partial<StateRow> = { fill_level: clamped, waste_status: nextStatus };
+  const patch: Partial<StateRow> = {
+    fill_level: clamped,
+    waste_status: nextStatus,
+  };
+
+  if (clamped < 50 && !current.actuator_active) {
+    patch.release_armed = true;
+  }
 
   if (nextStatus === "FULL") {
     if (current.notification_status === "NOT_SENT") {
@@ -165,16 +181,6 @@ export async function reportSensorReading(fillLevel: number): Promise<Notificati
       patch.notification_status = "SENT";
       patch.notification_sent_at = new Date().toISOString();
     }
-    // Kung SENT/ACKNOWLEDGED/EXPIRED na ito, huwag nang magpadala ulit habang FULL pa rin
-  } else if (wasFull) {
-    // Bumaba mula FULL papuntang NOT_FULL — naalis na ang basura.
-    // I-reset ang buong cycle para eligible ulit sa susunod na FULL.
-    patch.notification_status = "NOT_SENT";
-    patch.notification_sent_at = null;
-    patch.acknowledged_at = null;
-    patch.actuator_active = false;
-    patch.released_at = null;
-    patch.released_by = null;
   }
 
   const updated = await saveRow(patch);
@@ -196,24 +202,54 @@ export async function acknowledgeNotification(): Promise<NotificationDto> {
   return toDto(current);
 }
 
-// Manual na command: agad i-activate ang actuator (hal. emergency, o hindi na aabot ang
-// responder sa loob ng 5 minuto).
 export async function releaseNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
+
   if (
-    (current.notification_status === "SENT" || current.notification_status === "EXPIRED") &&
-    !current.actuator_active
+    current.fill_level >= 50 &&
+    !current.actuator_active &&
+    current.release_armed
   ) {
-    const updated = await saveRow({
-      // Resolve the active notification immediately when Release Now is pressed.
-      // released_by still distinguishes manual release from auto-release.
-      notification_status: "EXPIRED",
+    const patch: Partial<StateRow> = {
       actuator_active: true,
+      release_armed: false,
       released_at: new Date().toISOString(),
       released_by: "manual",
-    });
+    };
+
+    if (current.fill_level >= FULL_THRESHOLD) {
+      patch.notification_status = "EXPIRED";
+    }
+
+    const updated = await saveRow(patch);
     await logHistory(updated);
     return toDto(updated);
   }
+
   return toDto(current);
+}
+
+
+export async function completeRelease(): Promise<NotificationDto> {
+  const current = await fetchRow();
+
+  if (!current.actuator_active) {
+    return toDto(current);
+  }
+
+  const nextStatus: WasteStatus =
+    current.fill_level >= FULL_THRESHOLD ? "FULL" : "NOT_FULL";
+
+  const updated = await saveRow({
+    waste_status: nextStatus,
+    notification_status: "NOT_SENT",
+    notification_sent_at: null,
+    acknowledged_at: null,
+    actuator_active: false,
+    release_armed: current.fill_level < 50,
+    released_at: null,
+    released_by: null,
+  });
+
+  return toDto(updated);
 }
