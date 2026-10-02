@@ -276,6 +276,11 @@ function Dashboard() {
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
                   Waste Compartment — Not Full
                 </h2>
+                  {dto.notificationStatus === "SENT" && (
+                    <div className="mt-2 font-mono text-2xl font-bold text-destructive">
+                      {countdown}
+                    </div>
+                  )}              
                 <p className="mt-1 text-sm text-muted-foreground">
                 <strong className="text-white">
                 Current Fill Level: {dto.fillLevel}%
