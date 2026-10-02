@@ -335,12 +335,14 @@ function Dashboard() {
                   <Button
                     variant="primary"
                     onClick={handleAcknowledge}
-                    disabled={isReleased}
+                    disabled={dto.notificationStatus === "ACKNOWLEDGED" || isReleased}
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    Acknowledge Now
+                    {dto.notificationStatus === "ACKNOWLEDGED"
+                      ? "Acknowledged"
+                      : "Acknowledge Now"}
                   </Button>
-                )}
+)}
 
                {showReleaseButton && (
                     <Button
