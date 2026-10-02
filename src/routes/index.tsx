@@ -276,11 +276,6 @@ function Dashboard() {
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
                   Waste Compartment — Not Full
                 </h2>
-                  {dto.notificationStatus === "SENT" && (
-                    <div className="mt-2 font-mono text-2xl font-bold text-destructive">
-                      {countdown}
-                    </div>
-                  )}              
                 <p className="mt-1 text-sm text-muted-foreground">
                 <strong className="text-white">
                 Current Fill Level: {dto.fillLevel}%
@@ -340,14 +335,12 @@ function Dashboard() {
                   <Button
                     variant="primary"
                     onClick={handleAcknowledge}
-                    disabled={dto.notificationStatus === "ACKNOWLEDGED" || isReleased}
+                    disabled={isReleased}
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    {dto.notificationStatus === "ACKNOWLEDGED"
-                      ? "Acknowledged"
-                      : "Acknowledge Now"}
+                    Acknowledge Now
                   </Button>
-)}
+                )}
 
                {showReleaseButton && (
                     <Button
