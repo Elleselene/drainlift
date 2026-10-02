@@ -125,8 +125,6 @@ async function logHistory(row: StateRow) {
 // Tinitingnan tuwing may bumabasa ng state: kung SENT pa rin pero lampas na sa 5 minuto na
 // walang acknowledgment, nag-expire na ang notification cycle — at kusang mag-a-activate ang
 // actuator (auto-release).
-async function applyExpiry(row: StateRow): Promise<StateRow> {
-  const sentAt = toEpoch(row.notification_sent_at);
 
 async function applyExpiry(row: StateRow): Promise<StateRow> {
   const sentAt = toEpoch(row.notification_sent_at);
