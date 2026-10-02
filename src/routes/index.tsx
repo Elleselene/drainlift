@@ -280,8 +280,11 @@ const showReleaseButton =
                   Waste Compartment — Not Full
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                 Current <strong>Fill Level: {dto.fillLevel}%</strong>. 
-                 Monitoring the ultrasonic sensor for a full-compartment reading.
+                <strong className="text-white">
+                Current Fill Level: {dto.fillLevel}%
+              </strong>
+              {" "}
+              Monitoring the ultrasonic sensor for a full-compartment reading.
                 </p>
               </div>
               {showReleaseButton && (
