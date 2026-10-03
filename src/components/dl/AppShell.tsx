@@ -1,6 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { BarChart3, Bell, Info, LogOut, Menu, Moon, Sun, User, X } from "lucide-react";
+import {
+  BarChart3,
+  Bell,
+  CircleHelp,
+  Info,
+  LogOut,
+  Menu,
+  Moon,
+  Sun,
+  User,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/app-state";
 import { initialsOf } from "@/lib/drainlift";
@@ -50,6 +61,7 @@ const navGroups = [
     label: "Info",
     items: [
       { to: "/about", label: "About Us", icon: Info },
+      { to: "/faq", label: "FAQ", icon: CircleHelp },
       { to: "/profile", label: "Profile", icon: User },
     ],
   },
