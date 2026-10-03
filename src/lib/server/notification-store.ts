@@ -40,7 +40,6 @@ type StateRow = {
   notification_status: NotificationStatus;
   notification_sent_at: string | null; // ISO timestamp
   acknowledged_at: string | null;
-  actuator_active: boolean;
   release_armed: boolean;
   released_at: string | null;
   released_by: ReleasedBy;
@@ -53,8 +52,6 @@ export type NotificationDto = {
   notificationStatus: NotificationStatus;
   notificationSentAt: number | null; // epoch ms, mas madaling gamitin sa frontend
   acknowledgedAt: number | null;
-  actuatorActive: boolean;
-  releaseArmed: boolean;
   releasedAt: number | null;
   releasedBy: ReleasedBy;
   remainingSeconds: number;
@@ -79,8 +76,6 @@ function toDto(row: StateRow): NotificationDto {
     notificationStatus: row.notification_status,
     notificationSentAt: sentAt,
     acknowledgedAt: toEpoch(row.acknowledged_at),
-    actuatorActive: row.actuator_active,
-    releaseArmed: row.release_armed,
     releasedAt: toEpoch(row.released_at),
     releasedBy: row.released_by,
     remainingSeconds: Math.ceil(remainingMs / 1000),

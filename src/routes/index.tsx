@@ -88,8 +88,6 @@ type NotificationDto = {
   notificationStatus: "NOT_SENT" | "SENT" | "ACKNOWLEDGED" | "EXPIRED";
   notificationSentAt: number | null;
   acknowledgedAt: number | null;
-  actuatorActive: boolean;
-  releaseArmed: boolean;
   releasedAt: number | null;
   releasedBy: "manual" | "auto" | null;
   remainingSeconds: number;
