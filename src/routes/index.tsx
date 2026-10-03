@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   KeyRound,
   MapPin,
-  RefreshCw,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -137,29 +136,16 @@ function useNotification() {
     return res.ok;
   }
 
-  async function reportReading(fillLevel: number) {
-    const res = await fetch("/api/sensor-reading", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fillLevel }),
-    });
-    if (res.ok) applyDto(await res.json());
-    return res.ok;
-  }
-
   return {
     dto,
     displaySeconds,
     acknowledge: () => post("/api/notification-acknowledge"),
     release: () => post("/api/notification-release"),
-    simulateFull: () => reportReading(100),
-    simulateRemoved: () => reportReading(0),
   };
 }
 
 function Dashboard() {
-  const { dto, displaySeconds, acknowledge, release, simulateFull, simulateRemoved } =
-    useNotification();
+  const { dto, displaySeconds, acknowledge, release } = useNotification();
   const historyRows = useNotificationHistoryPreview(); // pinakabagong 5, galing sa Supabase
 
   // Acknowledge the active alert and stop the countdown.
@@ -179,26 +165,6 @@ function Dashboard() {
     if (ok) {
       toast.success("Released", {
         description: "The release request has been successfully recorded.",
-      });
-    }
-  }
-
-  // Bagong FULL reading (demo lang, habang wala pang totoong ultrasonic sensor na naka-connect)
-  async function handleSimulateFull() {
-    const ok = await simulateFull();
-    if (ok) {
-      toast.info("Sensor reading: FULL", {
-        description: "Bagong FULL event — magpapadala ng notification kung wala pang aktibo.",
-      });
-    }
-  }
-
-  // Simulate na naalis na ang basura — dito nag-re-reset ang buong notification cycle
-  async function handleSimulateRemoved() {
-    const ok = await simulateRemoved();
-    if (ok) {
-      toast.info("Sensor reading: NOT FULL", {
-        description: "Naalis na ang basura — na-reset ang notification cycle.",
       });
     }
   }
@@ -242,17 +208,6 @@ function Dashboard() {
           <StatusPill tone="primary" className="hidden sm:inline-flex">
             System Online
           </StatusPill>
-          {/* Iisang button para i-demo ang buong cycle: FULL -> ... -> removed -> NOT_FULL */}
-          <Button
-            variant="info"
-            onClick={dto?.wasteStatus === "FULL" ? handleSimulateRemoved : handleSimulateFull}
-            disabled={isLoading}
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {dto?.wasteStatus === "FULL" ? "Mark Waste Removed" : "Simulate Alert"}
-            </span>
-          </Button>
         </>
       }
     >
