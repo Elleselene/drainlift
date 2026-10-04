@@ -156,7 +156,7 @@ export const researchers = [
   {
     name: "Chad Michael M. Jantoc",
     role: "Prototype Development & Fabrication",
-    photo: "/chad.jpg",
+    photo: "/chad.png",
   },
 ];
 
