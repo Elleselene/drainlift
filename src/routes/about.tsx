@@ -114,14 +114,14 @@ function AboutPage() {
             onPointerLeave={cancelSecretPress}
             onPointerCancel={cancelSecretPress}
             onContextMenu={(e) => e.preventDefault()}
-            className="mx-auto block select-none border-0 bg-transparent p-0"
+            className="mx-auto -mb-3.5 block select-none border-0 bg-transparent p-0"
             aria-label="DrainLift"
           >
             <img
               src="/logo.png"
               alt="DrainLift"
               draggable={false}
-              className="h-16 w-16 select-none object-contain"
+              className="h-20 w-20 select-none object-contain"
             />
           </button>
           <h2 className="mt-4 text-3xl font-bold sm:text-4xl">About DrainLift</h2>
