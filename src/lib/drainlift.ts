@@ -137,11 +137,27 @@ export const collectionEvents = [
  */
 export type Researcher = { name: string; role: string; photo?: string };
 
-export const researchers: Researcher[] = [
-  { name: "Researcher One", role: "Hardware & Sensors" },
-  { name: "Researcher Two", role: "Backend & Database" },
-  { name: "Researcher Three", role: "AI Detection" },
-  { name: "Researcher Four", role: "Frontend & UX" },
+export const researchers = [
+  {
+    name: "Carla Joy S. Moje",
+    role: "Hardware & Sensor Integration",
+    photo: "/researchers/carla.png",
+  },
+  {
+    name: "Kate Marie Faye M. Manuba",
+    role: "Image Detection & System Design",
+    photo: "/researchers/kate.png",
+  },
+  {
+    name: "Jaynabelle C. Rioflorido",
+    role: "Web Application & Database Development",
+    photo: "/researchers/jaynabelle.png",
+  },
+  {
+    name: "Chad Michael M. Jantoc",
+    role: "Prototype Development & Fabrication",
+    photo: "/researchers/chad.jpg",
+  },
 ];
 
 // Kunin ang initials ng pangalan, hal. "Juan Dela Cruz" -> "JD"

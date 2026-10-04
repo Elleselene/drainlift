@@ -104,10 +104,6 @@ function AboutPage() {
               </Card>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            Placeholder team entries — send me the real names, roles and photos and I'll
-            put them in.
-          </p>
         </div>
       </div>
     </AppShell>
