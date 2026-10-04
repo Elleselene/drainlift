@@ -141,22 +141,22 @@ export const researchers = [
   {
     name: "Carla Joy S. Moje",
     role: "Hardware & Sensor Integration",
-    photo: "/researchers/carla.png",
+    photo: "/carla.png",
   },
   {
     name: "Kate Marie Faye M. Manuba",
     role: "Image Detection & System Design",
-    photo: "/researchers/kate.png",
+    photo: "/kate.png",
   },
   {
     name: "Jaynabelle C. Rioflorido",
     role: "Web Application & Database Development",
-    photo: "/researchers/jaynabelle.png",
+    photo: "/jaynabelle.png",
   },
   {
     name: "Chad Michael M. Jantoc",
     role: "Prototype Development & Fabrication",
-    photo: "/researchers/chad.jpg",
+    photo: "/chad.jpg",
   },
 ];
 
