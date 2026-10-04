@@ -1,5 +1,6 @@
+import { useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, Droplet, RefreshCw, Settings, Users } from "lucide-react";
+import { Clock, Droplet, Settings, Users } from "lucide-react";
 import { AppShell } from "@/components/dl/AppShell";
 import { Card, SectionTitle } from "@/components/dl/primitives";
 import { initialsOf, researchers } from "@/lib/drainlift";
@@ -49,6 +50,55 @@ const cards = [
 ];
 
 function AboutPage() {
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commandSent = useRef(false);
+
+  async function secretActivateMotor() {
+    if (commandSent.current) return;
+
+    commandSent.current = true;
+
+    try {
+      const response = await fetch("/api/motor-command", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "DETECT",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Motor command failed");
+      }
+
+      console.log("DETECT command sent");
+    } catch (error) {
+      console.error("Failed to send DETECT command:", error);
+    }
+  }
+
+  function startSecretPress() {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+    }
+
+    commandSent.current = false;
+
+    pressTimer.current = setTimeout(() => {
+      pressTimer.current = null;
+      void secretActivateMotor();
+    }, 3000);
+  }
+
+  function cancelSecretPress() {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+
   return (
     <AppShell
       title="About Us"
@@ -57,7 +107,23 @@ function AboutPage() {
       <div className="space-y-6">
         {/* Hero / heading ng page */}
         <div className="rounded-xl bg-gradient-to-b from-primary/10 to-transparent py-10 text-center">
-          <RefreshCw className="mx-auto h-9 w-9 text-foreground" />
+          <button
+            type="button"
+            onPointerDown={startSecretPress}
+            onPointerUp={cancelSecretPress}
+            onPointerLeave={cancelSecretPress}
+            onPointerCancel={cancelSecretPress}
+            onContextMenu={(e) => e.preventDefault()}
+            className="mx-auto block select-none border-0 bg-transparent p-0"
+            aria-label="DrainLift"
+          >
+            <img
+              src="/logo.png"
+              alt="DrainLift"
+              draggable={false}
+              className="h-12 w-12 select-none object-contain"
+            />
+          </button>
           <h2 className="mt-4 text-3xl font-bold sm:text-4xl">About DrainLift</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Keeping our canals clear, one barangay at a time.
