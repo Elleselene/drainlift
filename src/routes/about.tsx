@@ -121,7 +121,7 @@ function AboutPage() {
               src="/logo.png"
               alt="DrainLift"
               draggable={false}
-              className="h-12 w-12 select-none object-contain"
+              className="h-16 w-16 select-none object-contain"
             />
           </button>
           <h2 className="mt-4 text-3xl font-bold sm:text-4xl">About DrainLift</h2>
