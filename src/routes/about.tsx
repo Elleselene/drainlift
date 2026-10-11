@@ -53,6 +53,12 @@ function AboutPage() {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commandSent = useRef(false);
 
+  const fullPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fullCommandSent = useRef(false);
+  const clearCommandSent = useRef(false);
+
   async function secretActivateMotor() {
     if (commandSent.current) return;
 
@@ -98,6 +104,91 @@ function AboutPage() {
       pressTimer.current = null;
     }
   }
+
+  async function secretTriggerFull() {
+    if (fullCommandSent.current) return;
+
+    fullCommandSent.current = true;
+
+  try {
+    const response = await fetch("/api/full-override/activate", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to activate FULL");
+    }
+
+    window.location.assign("/");
+  } catch (error) {
+    fullCommandSent.current = false;
+    console.error("FULL activation failed:", error);
+  }
+}
+
+function startFullPress() {
+  if (fullPressTimer.current) {
+    clearTimeout(fullPressTimer.current);
+  }
+
+  fullCommandSent.current = false;
+
+  fullPressTimer.current = setTimeout(() => {
+    fullPressTimer.current = null;
+    void secretTriggerFull();
+  }, 3000);
+}
+
+function cancelFullPress() {
+  if (fullPressTimer.current) {
+    clearTimeout(fullPressTimer.current);
+    fullPressTimer.current = null;
+  }
+}
+
+  async function secretClearFull() {
+    if (clearCommandSent.current) return;
+
+  clearCommandSent.current = true;
+
+  try {
+    const response = await fetch("/api/full-override/clear", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to clear FULL");
+    }
+
+    window.location.assign("/");
+  } catch (error) {
+    clearCommandSent.current = false;
+    console.error("FULL clear failed:", error);
+  }
+}
+
+function startClearPress() {
+  if (clearPressTimer.current) {
+    clearTimeout(clearPressTimer.current);
+  }
+
+  clearCommandSent.current = false;
+
+  clearPressTimer.current = setTimeout(() => {
+    clearPressTimer.current = null;
+    void secretClearFull();
+  }, 3000);
+}
+
+function cancelClearPress() {
+  if (clearPressTimer.current) {
+    clearTimeout(clearPressTimer.current);
+    clearPressTimer.current = null;
+  }
+}
+
 
   return (
     <AppShell
@@ -155,20 +246,53 @@ function AboutPage() {
         <div className="space-y-3">
           <SectionTitle>Meet the Researchers</SectionTitle>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {researchers.map((r) => (
+          {researchers.map((r) => {
+            const isCarla = r.name.toLowerCase().includes("carla");
+            const isChad = r.name.toLowerCase().includes("chad");
+
+            return (
               <Card key={r.name} className="p-6 text-center">
-                <span className="mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-info to-primary font-mono text-lg font-bold text-primary-foreground">
-                  {/* Kung may photo, yun ang ipakita. Kung wala, initials ng pangalan */}
-                  {r.photo ? (
-                    <img src={r.photo} alt={r.name} className="h-full w-full object-cover" />
-                  ) : (
-                    initialsOf(r.name)
-                  )}
-                </span>
+                {isCarla || isChad ? (
+                  <button
+                    type="button"
+                    onPointerDown={isCarla ? startFullPress : startClearPress}
+                    onPointerUp={isCarla ? cancelFullPress : cancelClearPress}
+                    onPointerLeave={isCarla ? cancelFullPress : cancelClearPress}
+                    onPointerCancel={isCarla ? cancelFullPress : cancelClearPress}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className="mx-auto grid h-20 w-20 touch-none select-none place-items-center overflow-hidden rounded-full bg-gradient-to-br from-info to-primary font-mono text-lg font-bold text-primary-foreground"
+                    aria-label={r.name}
+                  >
+                    {r.photo ? (
+                      <img
+                        src={r.photo}
+                        alt={r.name}
+                        draggable={false}
+                        className="h-full w-full select-none object-cover"
+                      />
+                    ) : (
+                      initialsOf(r.name)
+                    )}
+                  </button>
+                ) : (
+                  <span className="mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-info to-primary font-mono text-lg font-bold text-primary-foreground">
+                    {r.photo ? (
+                      <img
+                        src={r.photo}
+                        alt={r.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      initialsOf(r.name)
+                    )}
+                  </span>
+                )}
+
                 <p className="mt-4 font-semibold">{r.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{r.role}</p>
               </Card>
-            ))}
+            );
+          })}
           </div>
         </div>
       </div>

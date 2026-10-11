@@ -43,6 +43,8 @@ type StateRow = {
   release_armed: boolean;
   released_at: string | null;
   released_by: ReleasedBy;
+  full_override_active: boolean;
+  actual_fill_level: number | null;
 };
 
 // Ang laman ng DTO na ipinapadala papunta sa dashboard (camelCase + derived na values)
@@ -192,10 +194,28 @@ export async function reportSensorReading(fillLevel: number): Promise<Notificati
   if (!Number.isFinite(fillLevel)) return toDto(current);
 
   const clamped = Math.max(0, Math.min(100, Math.round(fillLevel)));
+    if (current.full_override_active) {
+      const { error } = await supabaseAdmin
+        .from("notification_state")
+        .update({
+          actual_fill_level: clamped,
+        })
+        .eq("id", STATE_ROW_ID);
+
+      if (error) {
+        throw new Error(
+          `[notification-store] Failed to save actual reading: ${error.message}`,
+        );
+      }
+
+      return toDto(current);
+    }
+
   const nextStatus: WasteStatus = clamped >= FULL_THRESHOLD ? "FULL" : "NOT_FULL";
 
   const basePatch: Partial<StateRow> = {
     fill_level: clamped,
+    actual_fill_level: clamped,
     waste_status: nextStatus,
   };
 
@@ -303,3 +323,68 @@ export async function releaseNotification(): Promise<NotificationDto> {
 export async function completeRelease(): Promise<NotificationDto> {
   return toDto(await fetchRow());
 }
+
+export async function activateFullOverride(): Promise<NotificationDto> {
+  const current = await applyExpiry(await fetchRow());
+
+  if (current.full_override_active) {
+    return toDto(current);
+  }
+
+  if (
+    current.notification_status !== "NOT_SENT" ||
+    current.released_at !== null
+  ) {
+    throw new Error("The previous notification cycle is not ready.");
+  }
+
+  const updated = await updateIf(
+    {
+      full_override_active: true,
+      actual_fill_level:
+        current.actual_fill_level ?? current.fill_level,
+      fill_level: 100,
+      waste_status: "FULL",
+      notification_status: "SENT",
+      notification_sent_at: new Date().toISOString(),
+      acknowledged_at: null,
+      released_at: null,
+      released_by: null,
+      release_armed: true,
+    },
+    (q) =>
+      q.eq("notification_status", "NOT_SENT")
+        .eq("full_override_active", false)
+        .is("released_at", null),
+  );
+
+  if (!updated) {
+    throw new Error("FULL activation was not accepted.");
+  }
+
+  return toDto(updated);
+}
+
+
+
+export async function clearFullOverride(): Promise<NotificationDto> {
+  const current = await applyExpiry(await fetchRow());
+
+  if (!current.full_override_active) {
+    return toDto(current);
+  }
+
+  const actual = current.actual_fill_level ?? 0;
+
+  const updated = await updateIf(
+    {
+      full_override_active: false,
+      fill_level: actual,
+      waste_status: actual >= FULL_THRESHOLD ? "FULL" : "NOT_FULL",
+    },
+    (q) => q.eq("full_override_active", true),
+  );
+
+  return toDto(updated ?? await fetchRow());
+}
+

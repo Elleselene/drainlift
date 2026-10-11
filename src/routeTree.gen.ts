@@ -22,6 +22,8 @@ import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notific
 import { Route as ApiNotificationReleaseRouteImport } from './routes/api/notification-release'
 import { Route as ApiReleaseCompleteRouteImport } from './routes/api/release-complete'
 import { Route as ApiSensorReadingRouteImport } from './routes/api/sensor-reading'
+import { Route as ApiFullOverrideActivateRouteImport } from './routes/api/full-override/activate'
+import { Route as ApiFullOverrideClearRouteImport } from './routes/api/full-override/clear'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -89,6 +91,16 @@ const ApiSensorReadingRoute = ApiSensorReadingRouteImport.update({
   path: '/api/sensor-reading',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFullOverrideActivateRoute = ApiFullOverrideActivateRouteImport.update({
+  id: '/api/full-override/activate',
+  path: '/api/full-override/activate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFullOverrideClearRoute = ApiFullOverrideClearRouteImport.update({
+  id: '/api/full-override/clear',
+  path: '/api/full-override/clear',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -104,6 +116,8 @@ export interface FileRoutesByFullPath {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
+  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
+  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -119,6 +133,8 @@ export interface FileRoutesByTo {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
+  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
+  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -135,6 +151,8 @@ export interface FileRoutesById {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
+  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
+  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -152,6 +170,8 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/release-complete'
     | '/api/sensor-reading'
+    | '/api/full-override/activate'
+    | '/api/full-override/clear'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -167,6 +187,8 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/release-complete'
     | '/api/sensor-reading'
+    | '/api/full-override/activate'
+    | '/api/full-override/clear'
   id:
     | '__root__'
     | '/'
@@ -182,6 +204,8 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/release-complete'
     | '/api/sensor-reading'
+    | '/api/full-override/activate'
+    | '/api/full-override/clear'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -198,6 +222,8 @@ export interface RootRouteChildren {
   ApiNotificationReleaseRoute: typeof ApiNotificationReleaseRoute
   ApiReleaseCompleteRoute: typeof ApiReleaseCompleteRoute
   ApiSensorReadingRoute: typeof ApiSensorReadingRoute
+  ApiFullOverrideActivateRoute: typeof ApiFullOverrideActivateRoute
+  ApiFullOverrideClearRoute: typeof ApiFullOverrideClearRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -293,6 +319,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSensorReadingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/full-override/activate': {
+      id: '/api/full-override/activate'
+      path: '/api/full-override/activate'
+      fullPath: '/api/full-override/activate'
+      preLoaderRoute: typeof ApiFullOverrideActivateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/full-override/clear': {
+      id: '/api/full-override/clear'
+      path: '/api/full-override/clear'
+      fullPath: '/api/full-override/clear'
+      preLoaderRoute: typeof ApiFullOverrideClearRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -310,6 +350,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationReleaseRoute: ApiNotificationReleaseRoute,
   ApiReleaseCompleteRoute: ApiReleaseCompleteRoute,
   ApiSensorReadingRoute: ApiSensorReadingRoute,
+  ApiFullOverrideActivateRoute: ApiFullOverrideActivateRoute,
+  ApiFullOverrideClearRoute: ApiFullOverrideClearRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

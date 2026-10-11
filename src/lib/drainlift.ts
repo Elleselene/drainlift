@@ -137,7 +137,7 @@ export const collectionEvents = [
  */
 export type Researcher = { name: string; role: string; photo?: string };
 
-export const researchers = [
+export const researchers: Researcher[] = [
   {
     name: "Carla Joy S. Moje",
     role: "Hardware & Sensor Integration",
