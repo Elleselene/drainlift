@@ -70,6 +70,7 @@ type NotificationDto = {
   releaseArmed: boolean;
   fullOverrideActive: boolean;
   hardwareSystemActive: boolean | null;
+  hardwareOnline: boolean;
 };
 
 function useNotificationHistoryPreview() {
@@ -150,7 +151,7 @@ function useNotification() {
         if (!response.ok) {
           toast.error(
             response.status === 403
-              ? "Admin access required."
+              ? "Authorized user access required."
               : "Unable to complete the request.",
           );
           return false;
@@ -195,7 +196,7 @@ function Dashboard() {
     isAuthenticated &&
     dto?.fillLevel === 100 &&
     !isReleased &&
-    (dto.hardwareSystemActive === false ||
+    (!dto.hardwareOnline || dto.hardwareSystemActive === false ||
       dto.notificationStatus === "SENT" ||
       dto.notificationStatus === "ACKNOWLEDGED");
 
@@ -210,8 +211,8 @@ function Dashboard() {
 
   async function handleRelease() {
     if (await release()) {
-      toast.success("Release Requested", {
-        description: "The release command has been recorded for the device.",
+      toast.success("Request Processed", {
+        description: "If the device is offline or stopped, the request is cancelled. Otherwise, the website returns to normal after 2 minutes.",
       });
       await refreshHistory();
     }
@@ -228,7 +229,7 @@ function Dashboard() {
   }, [dto?.releasedBy, dto?.releasedAt]);
 
   const countdown = `${String(Math.floor(displaySeconds / 60)).padStart(2, "0")}:${String(displaySeconds % 60).padStart(2, "0")}`;
-  const showAlertCard = dto?.fillLevel === 100 && dto.notificationStatus !== "NOT_SENT";
+  const showAlertCard = dto?.fillLevel === 100 && dto.notificationStatus !== "NOT_SENT" && dto.hardwareOnline && dto.hardwareSystemActive === true;
 
   return (
     <AppShell
@@ -236,7 +237,7 @@ function Dashboard() {
       subtitle="Waste Compartment Monitoring — Real-time Alerts"
       actions={
         <StatusPill tone="primary" className="hidden sm:inline-flex">
-          System Online
+          {dto?.hardwareOnline ? (dto.hardwareSystemActive ? "System Online" : "System Stopped") : "System Offline"}
         </StatusPill>
       }
     >
@@ -260,14 +261,14 @@ function Dashboard() {
                   <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
                   Monitoring the waste compartment fill level.
                 </p>
-                {dto.hardwareSystemActive === false && showReleaseButton && (
+                {(!dto.hardwareOnline || dto.hardwareSystemActive === false) && showReleaseButton && (
                   <div className="mt-3">
                     <Button variant="danger" onClick={handleRelease} disabled={pending}>
                       <Zap className="h-4 w-4" />
                       Release Now
                     </Button>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      System stopped — request will be cancelled without moving the actuator.
+                      System stopped/offline — no new release command will be queued.
                     </p>
                   </div>
                 )}
@@ -308,10 +309,10 @@ function Dashboard() {
               </div>
               <div className="shrink-0 border-l border-border pl-7 pr-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Auto-Release In
+                  {dto.notificationStatus === "SENT" ? "Auto-Release In" : "Release Status"}
                 </p>
                 <p className="mt-1 font-mono text-3xl font-bold text-destructive">
-                  {dto.notificationStatus === "SENT" ? countdown : "--:--"}
+                  {dto.notificationStatus === "SENT" ? countdown : isReleased ? "Requested" : "Stopped"}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

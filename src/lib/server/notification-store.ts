@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "./supabase-admin";
 
 const NOTIFICATION_WINDOW_MS = 5 * 60 * 1000;
+const RELEASE_TIMEOUT_MS = 2 * 60 * 1000;
+const HEARTBEAT_TIMEOUT_MS = 20 * 1000;
 const FULL_THRESHOLD = 100;
 const RESET_THRESHOLD = 50;
 const STATE_ROW_ID = 1;
@@ -22,6 +24,7 @@ type StateRow = {
   full_override_active: boolean;
   actual_fill_level: number | null;
   hardware_system_active: boolean | null;
+  hardware_last_seen_at: string | null;
 };
 
 export type NotificationDto = {
@@ -38,6 +41,7 @@ export type NotificationDto = {
   releaseArmed: boolean;
   fullOverrideActive: boolean;
   hardwareSystemActive: boolean | null;
+  hardwareOnline: boolean;
 };
 
 function toEpoch(iso: string | null): number | null {
@@ -65,6 +69,7 @@ function toDto(row: StateRow): NotificationDto {
     releaseArmed: row.release_armed,
     fullOverrideActive: row.full_override_active,
     hardwareSystemActive: row.hardware_system_active,
+    hardwareOnline: isOnline(row),
   };
 }
 
@@ -129,11 +134,51 @@ async function logHistory(row: StateRow): Promise<void> {
   }
 }
 
+function isOnline(row: StateRow): boolean {
+  const seen = toEpoch(row.hardware_last_seen_at);
+  return seen !== null && Date.now() - seen < HEARTBEAT_TIMEOUT_MS;
+}
+
+// This resets WEBSITE state only. The Arduino controls physical movement.
+// Disarm the cycle until fill falls below 50%, avoiding a repeat at 100%.
+const normalPatch: Partial<StateRow> = {
+  notification_status: "NOT_SENT",
+  notification_sent_at: null,
+  acknowledged_at: null,
+  released_at: null,
+  released_by: null,
+  release_armed: false,
+};
+
+async function normalizeWebsiteState(row: StateRow): Promise<StateRow> {
+  if (!isOnline(row)) {
+    // Missing heartbeat means OFFLINE, not proof of a stopped actuator.
+    if (row.released_at !== null || row.notification_status !== "NOT_SENT") {
+      const updated = await updateIf(
+        { ...normalPatch, hardware_system_active: null },
+        (q) => row.released_at === null
+          ? q.is("released_at", null).eq("notification_status", row.notification_status)
+          : q.eq("released_at", row.released_at)
+      );
+      return updated ?? fetchRow();
+    }
+    return row;
+  }
+  const releasedAt = toEpoch(row.released_at);
+  if (releasedAt !== null && Date.now() - releasedAt >= RELEASE_TIMEOUT_MS) {
+    const updated = await updateIf(normalPatch, (q) => q.eq("released_at", row.released_at));
+    return updated ?? fetchRow();
+  }
+  return row;
+}
+
 async function applyExpiry(row: StateRow): Promise<StateRow> {
+  row = await normalizeWebsiteState(row);
   const sentAt = toEpoch(row.notification_sent_at);
 
   if (
     row.hardware_system_active !== true ||
+    !isOnline(row) ||
     row.notification_status !== "SENT" ||
     sentAt === null ||
     Date.now() - sentAt < NOTIFICATION_WINDOW_MS
@@ -190,7 +235,7 @@ async function processEffectiveFill(
   };
 
   // Keep the reading visible while stopped, without generating alerts.
-  if (current.hardware_system_active !== true) {
+  if (current.hardware_system_active !== true || !isOnline(current)) {
     return toDto(await saveRow(basePatch));
   }
 
@@ -276,7 +321,7 @@ export async function setBypassEnabled(enabled: boolean): Promise<NotificationDt
 
 export async function acknowledgeNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
-  if (current.hardware_system_active !== true || current.notification_status !== "SENT") return toDto(current);
+  if (current.hardware_system_active !== true || !isOnline(current) || current.notification_status !== "SENT") return toDto(current);
 
   const updated = await updateIf(
     {
@@ -294,7 +339,7 @@ export async function acknowledgeNotification(): Promise<NotificationDto> {
 export async function releaseNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
   // A stopped device can accept a UI click, but never creates a release command.
-  if (current.hardware_system_active !== true) {
+  if (current.hardware_system_active !== true || !isOnline(current)) {
     return cancelStoppedRelease();
   }
 
@@ -326,35 +371,6 @@ export async function releaseNotification(): Promise<NotificationDto> {
   return toDto(updated);
 }
 
-// Called only after the Pi receives Arduino's RELEASE:COMPLETE.
-// Clear the command, but do NOT assume the compartment is empty.
-// A fresh CHECK_COMPARTMENT reading from Arduino supplies the real fill.
-// The resolved cycle stays disarmed until an actual reading drops below 50%.
-export async function completeRelease(): Promise<NotificationDto> {
-  const current = await fetchRow();
-  if (current.released_at === null) return toDto(current);
-
-  const updated = await updateIf(
-    {
-      released_at: null,
-      released_by: null,
-      release_armed: false,
-      notification_status: "EXPIRED",
-      fill_level: current.full_override_active
-        ? current.fill_level
-        : (current.actual_fill_level ?? current.fill_level),
-      waste_status:
-        (current.full_override_active
-          ? current.fill_level
-          : (current.actual_fill_level ?? current.fill_level)) === FULL_THRESHOLD
-          ? "FULL"
-          : "NOT_FULL",
-    },
-    (q) => q.eq("released_at", current.released_at),
-  );
-  return toDto(updated ?? (await fetchRow()));
-}
-
 // Compatibility with older callers; bypass activation is controlled by the clock only.
 export async function activateFullOverride(): Promise<NotificationDto> {
   return setBypassEnabled(true);
@@ -364,32 +380,31 @@ export async function clearFullOverride(): Promise<NotificationDto> {
   return setBypassEnabled(false);
 }
 
-const stoppedPatch: Partial<StateRow> = {
-  notification_status: "NOT_SENT",
-  notification_sent_at: null,
-  acknowledged_at: null,
-  released_at: null,
-  released_by: null,
-  release_armed: true,
-};
-
 export async function cancelStoppedRelease(): Promise<NotificationDto> {
-  const row = await updateIf(stoppedPatch, (q) => q.eq("hardware_system_active", false));
-  return toDto(row ?? (await fetchRow()));
+  const row = await fetchRow();
+  if (row.hardware_system_active === true && isOnline(row)) return toDto(row);
+  const updated = await saveRow(normalPatch);
+  return toDto(updated);
 }
 
-// Called only by the device-authenticated hardware-status endpoint.
+// Authenticated Pi heartbeat. OFF is confirmed by Arduino; missing heartbeat is OFFLINE.
 export async function reportHardwareStatus(active: boolean): Promise<NotificationDto> {
   const current = await fetchRow();
+  const now = new Date().toISOString();
   if (!active) {
-    // Clear the command atomically with the OFF status so stale polls cannot revive it.
-    const row = await saveRow({ hardware_system_active: false, ...stoppedPatch });
-    return toDto(row);
+    const updated = await saveRow({
+      ...normalPatch,
+      hardware_system_active: false,
+      hardware_last_seen_at: now,
+    });
+    return toDto(updated);
   }
-  if (current.hardware_system_active === true) return toDto(current);
-
-  // A fresh ON transition begins a new monitoring cycle.
-  const updated = await saveRow({ hardware_system_active: true, ...stoppedPatch });
-  if (updated.fill_level !== FULL_THRESHOLD) return toDto(updated);
-  return processEffectiveFill(FULL_THRESHOLD, { actualSensor: false });
+  const wasOnline = isOnline(current) && current.hardware_system_active === true;
+  // A reconnect must never re-arm a previously cancelled command.
+  const updated = await saveRow({
+    ...(wasOnline ? {} : normalPatch),
+    hardware_system_active: true,
+    hardware_last_seen_at: now,
+  });
+  return toDto(updated);
 }
