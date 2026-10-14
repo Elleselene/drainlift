@@ -676,12 +676,12 @@ export async function releaseNotification(): Promise<NotificationDto> {
 
   if (
 
-    current.fill_level !== FULL_THRESHOLD ||
+    current.fill_level < RESET_THRESHOLD ||
 
     current.released_at !== null ||
 
-    (current.notification_status !== "SENT" &&
-
+    (current.fill_level === FULL_THRESHOLD &&
+      current.notification_status !== "SENT" &&
       current.notification_status !== "ACKNOWLEDGED")
 
   ) {
@@ -712,9 +712,7 @@ export async function releaseNotification(): Promise<NotificationDto> {
 
         .is("released_at", null)
 
-        .eq("fill_level", FULL_THRESHOLD)
-
-        .in("notification_status", ["SENT", "ACKNOWLEDGED"]),
+        .gte("fill_level", RESET_THRESHOLD),
 
   );
 

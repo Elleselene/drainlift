@@ -380,15 +380,19 @@ function Dashboard() {
 
   const isReleased = dto?.releasedAt != null;
 
+  const isAutoReleased = dto?.releasedBy === "auto";
+
   const isLiveAlert = dto?.fillLevel === 100 && dto.notificationStatus === "SENT";
+
+  const showAcknowledgeButton = isAuthenticated && isLiveAlert;
 
   const showReleaseButton =
     isAuthenticated &&
     (dto?.fillLevel ?? 0) >= 50 &&
     !isReleased &&
-    (dto?.notificationStatus === "SENT" ||
-      dto?.notificationStatus === "ACKNOWLEDGED" ||
-      !dto?.hardwareOnline || dto?.hardwareSystemActive === false);
+    (dto?.fillLevel !== 100 ||
+      dto.notificationStatus === "SENT" ||
+      dto.notificationStatus === "ACKNOWLEDGED");
 
   async function handleAcknowledge() {
 
@@ -524,11 +528,11 @@ function Dashboard() {
 
                     </Button>
 
-                    <p className="mt-1 text-xs text-muted-foreground">
-
-                      System stopped/offline — no new release command will be queued.
-
-                    </p>
+                    {(!dto.hardwareOnline || dto.hardwareSystemActive === false) && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        System stopped/offline — no new release command will be queued.
+                      </p>
+                    )}
 
                   </div>
 
@@ -568,7 +572,11 @@ function Dashboard() {
 
                 {isReleased && (
 
-                  <StatusPill tone="warning">Actuator Activated</StatusPill>
+                  <StatusPill tone="warning">
+
+                    {isAutoReleased ? "Auto-Release Requested" : "Release Requested"}
+
+                  </StatusPill>
 
                 )}
 
@@ -590,7 +598,11 @@ function Dashboard() {
 
                   {isReleased &&
 
-                    "The actuator has been activated and the compartment has been released."}
+                    (isAutoReleased
+
+                      ? "The countdown expired. An automatic release request has been recorded."
+
+                      : "A manual release request has been recorded.")}
 
                 </p>
 
@@ -600,13 +612,13 @@ function Dashboard() {
 
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
 
-                  {dto.notificationStatus === "SENT" || isReleased ? "Auto-Release In" : "Release Status"}
+                  Auto-Release In
 
                 </p>
 
                 <p className="mt-1 font-mono text-3xl font-bold text-destructive">
 
-                  {dto.notificationStatus === "SENT" ? countdown : isReleased ? "-- : --" : "Stopped"}
+                  {dto.notificationStatus === "SENT" ? countdown : "--:--"}
 
                 </p>
 
@@ -614,50 +626,19 @@ function Dashboard() {
 
               <div className="flex flex-wrap items-center gap-2">
 
-                {isAuthenticated && (
-
-                  <Button
-
-                    variant="primary"
-
-                    onClick={handleAcknowledge}
-
-                    disabled={pending || !isLiveAlert}
-
-                  >
-
+                {(showAcknowledgeButton || dto.notificationStatus === "ACKNOWLEDGED" || isReleased) && (
+                  <Button variant="primary" onClick={handleAcknowledge}
+                    disabled={pending || dto.notificationStatus !== "SENT" || isReleased}>
                     <CheckCircle2 className="h-4 w-4" />
-
-                    Acknowledge Now
-
+                    {dto.notificationStatus === "ACKNOWLEDGED" ? "Acknowledged" : "Acknowledge Now"}
                   </Button>
-
                 )}
 
-                {isReleased ? (
-
-                  <Button variant="danger" disabled>
-
+                {(showReleaseButton || isReleased) && (
+                  <Button variant="danger" onClick={handleRelease} disabled={pending || isReleased}>
                     <Zap className="h-4 w-4" />
-
-                    Released
-
+                    {isReleased ? "Release Requested" : "Release Now"}
                   </Button>
-
-                ) : (
-
-                  showReleaseButton && (
-
-                    <Button variant="danger" onClick={handleRelease} disabled={pending}>
-
-                      <Zap className="h-4 w-4" />
-
-                      Release Now
-
-                    </Button>
-
-                  )
-
                 )}
 
               </div>

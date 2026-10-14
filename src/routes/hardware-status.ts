@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { reportHardwareStatus } from "@/lib/server/notification-store";
 
-export const Route = createFileRoute("/api/hardware-status")({
+export const Route = createFileRoute("/hardware-status")({
   server: {
     handlers: {
       POST: async ({ request }) => {
