@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { releaseNotification } from "@/lib/server/notification-store";
-import { requireAdmin } from "@/lib/server/auth";
+import { getUserRole } from "@/lib/server/auth";
 
-// POST /api/notification-release — manual na command para agad i-activate ang actuator
-// (hal. emergency), kahit hindi pa tapos ang 5-minute na countdown.
+// Manual release request for an authenticated Admin or User.
+// The notification store enforces the release state and fill-level rules.
 export const Route = createFileRoute("/api/notification-release")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!(await requireAdmin(request))) {
-          return Response.json({ error: "Admin access required" }, { status: 403 });
+        const role = await getUserRole(request);
+        if (role !== "admin" && role !== "user") {
+          return Response.json({ error: "Authenticated user access required" }, { status: 403 });
         }
 
         return Response.json(await releaseNotification());

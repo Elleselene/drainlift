@@ -23,7 +23,6 @@ import {
 } from "@/components/dl/primitives";
 import { device } from "@/lib/drainlift";
 import { supabase } from "@/lib/supabase-client";
-import { useAppState } from "@/lib/app-state";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -149,7 +148,7 @@ function useNotification() {
         if (!response.ok) {
           toast.error(
             response.status === 403
-              ? "Admin access required."
+              ? "Your account is not authorized for this action."
               : "Unable to complete the request.",
           );
           return false;
@@ -183,15 +182,12 @@ function useNotification() {
 function Dashboard() {
   const { dto, displaySeconds, pending, acknowledge, release } = useNotification();
   const { rows: historyRows, refreshHistory } = useNotificationHistoryPreview();
-  const { userRole, roleLoading } = useAppState();
-  const isAdmin = !roleLoading && userRole === "admin";
   const isLoading = dto === null;
   const isReleased = dto?.releasedAt != null;
   const isAutoReleased = dto?.releasedBy === "auto";
   const isLiveAlert = dto?.fillLevel === 100 && dto.notificationStatus === "SENT";
-  const showAcknowledgeButton = isAdmin && isLiveAlert;
+  const showAcknowledgeButton = isLiveAlert;
   const showReleaseButton =
-    isAdmin &&
     dto?.fillLevel === 100 &&
     !isReleased &&
     (dto.notificationStatus === "SENT" ||
