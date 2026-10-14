@@ -380,11 +380,7 @@ function Dashboard() {
 
   const isReleased = dto?.releasedAt != null;
 
-  const isAutoReleased = dto?.releasedBy === "auto";
-
   const isLiveAlert = dto?.fillLevel === 100 && dto.notificationStatus === "SENT";
-
-  const showAcknowledgeButton = isAuthenticated && isLiveAlert;
 
   const showReleaseButton =
     isAuthenticated &&
@@ -572,11 +568,7 @@ function Dashboard() {
 
                 {isReleased && (
 
-                  <StatusPill tone="warning">
-
-                    {isAutoReleased ? "Auto-Release Requested" : "Release Requested"}
-
-                  </StatusPill>
+                  <StatusPill tone="warning">Actuator Activated</StatusPill>
 
                 )}
 
@@ -598,11 +590,7 @@ function Dashboard() {
 
                   {isReleased &&
 
-                    (isAutoReleased
-
-                      ? "The countdown expired. An automatic release request has been recorded."
-
-                      : "A manual release request has been recorded.")}
+                    "The actuator has been activated and the compartment has been released."}
 
                 </p>
 
@@ -612,13 +600,13 @@ function Dashboard() {
 
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
 
-                  {dto.notificationStatus === "SENT" ? "Auto-Release In" : "Release Status"}
+                  {dto.notificationStatus === "SENT" || isReleased ? "Auto-Release In" : "Release Status"}
 
                 </p>
 
                 <p className="mt-1 font-mono text-3xl font-bold text-destructive">
 
-                  {dto.notificationStatus === "SENT" ? countdown : isReleased ? "Requested" : "Stopped"}
+                  {dto.notificationStatus === "SENT" ? countdown : isReleased ? "-- : --" : "Stopped"}
 
                 </p>
 
@@ -626,9 +614,17 @@ function Dashboard() {
 
               <div className="flex flex-wrap items-center gap-2">
 
-                {showAcknowledgeButton && (
+                {isAuthenticated && (
 
-                  <Button variant="primary" onClick={handleAcknowledge} disabled={pending}>
+                  <Button
+
+                    variant="primary"
+
+                    onClick={handleAcknowledge}
+
+                    disabled={pending || !isLiveAlert}
+
+                  >
 
                     <CheckCircle2 className="h-4 w-4" />
 
@@ -638,15 +634,29 @@ function Dashboard() {
 
                 )}
 
-                {showReleaseButton && (
+                {isReleased ? (
 
-                  <Button variant="danger" onClick={handleRelease} disabled={pending}>
+                  <Button variant="danger" disabled>
 
                     <Zap className="h-4 w-4" />
 
-                    Release Now
+                    Released
 
                   </Button>
+
+                ) : (
+
+                  showReleaseButton && (
+
+                    <Button variant="danger" onClick={handleRelease} disabled={pending}>
+
+                      <Zap className="h-4 w-4" />
+
+                      Release Now
+
+                    </Button>
+
+                  )
 
                 )}
 
