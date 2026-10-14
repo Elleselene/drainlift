@@ -1,5 +1,7 @@
+
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
+import { requireAdmin } from "@/lib/server/auth";
 
 export const Route = createFileRoute("/api/motor-command")({
   server: {
@@ -25,9 +27,27 @@ export const Route = createFileRoute("/api/motor-command")({
       },
 
       POST: async ({ request }) => {
-        const body = await request.json();
+        const isAdmin = await requireAdmin(request);
 
-        if (body.command !== "DETECT") {
+        if (!isAdmin) {
+          return Response.json(
+            { error: "Admin access required" },
+            { status: 403 },
+          );
+        }
+
+        let body: { command?: string };
+
+        try {
+          body = await request.json();
+        } catch {
+          return Response.json(
+            { error: "Invalid JSON" },
+            { status: 400 },
+          );
+        }
+
+        if (body?.command !== "DETECT") {
           return Response.json(
             { error: "Invalid command" },
             { status: 400 },

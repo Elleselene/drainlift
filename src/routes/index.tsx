@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -22,9 +22,9 @@ import {
   StatusPill,
 } from "@/components/dl/primitives";
 import { device } from "@/lib/drainlift";
+import { supabase } from "@/lib/supabase-client";
+import { useAppState } from "@/lib/app-state";
 
-// Dashboard page (URL: "/").
-// Route definition: "head" = title at meta tags ng page, "component" = yung ipapakita
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -45,10 +45,6 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-// Hugis ng estado na ibinabalik ng backend (src/lib/server/notification-store.ts) —
-// dapat tumugma ito sa NotificationDto doon.
-// Hugis ng bawat row na ibinabalik ng GET /api/notification-history (totoong audit log
-// galing sa Supabase, ginagamit ng preview table sa ibaba)
 type HistoryRow = {
   id: string;
   index: string;
@@ -60,27 +56,6 @@ type HistoryRow = {
   status: "acknowledged" | "auto-released" | "released";
 };
 
-// Kunin ang pinakabagong 5 entries ng notification history — client-only fetch, dahil
-// hindi ito available sa SSR (walang env vars/session pa sa unang render pass)
-function useNotificationHistoryPreview() {
-  const [rows, setRows] = useState<HistoryRow[] | null>(null); // null = loading pa
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/notification-history")
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) setRows((data.rows ?? []).slice(0, 5));
-      })
-      .catch(() => {
-        if (!cancelled) setRows([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return rows;
-}
-
 type NotificationDto = {
   wasteStatus: "FULL" | "NOT_FULL";
   fillLevel: number;
@@ -91,17 +66,39 @@ type NotificationDto = {
   releasedBy: "manual" | "auto" | null;
   remainingSeconds: number;
   windowSeconds: number;
+  actuatorActive: boolean;
+  releaseArmed: boolean;
+  fullOverrideActive: boolean;
 };
 
-// Custom hook na nag-poll sa backend (GET /api/notification) tuwing ilang segundo para
-// manatiling sync ang dashboard sa totoong estado — kahit ibang tao pa ang nag-acknowledge,
-// o totoong ultrasonic sensor na ang nagre-report. Dito rin nakalagay ang mga action
-// (acknowledge, release, simulate) na tumatawag sa backend.
+function useNotificationHistoryPreview() {
+  const [rows, setRows] = useState<HistoryRow[] | null>(null);
+  const refreshHistory = useCallback(async () => {
+    try {
+      const response = await fetch("/api/notification-history", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      setRows(Array.isArray(data.rows) ? data.rows.slice(0, 5) : []);
+    } catch {
+      // Keep the most recent successfully loaded history.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshHistory();
+    const id = setInterval(() => void refreshHistory(), 10000);
+    return () => clearInterval(id);
+  }, [refreshHistory]);
+
+  return { rows, refreshHistory };
+}
+
 function useNotification() {
   const [dto, setDto] = useState<NotificationDto | null>(null);
   const [displaySeconds, setDisplaySeconds] = useState(0);
+  const [pending, setPending] = useState(false);
+  const requestInProgress = useRef(false);
 
-  // I-save ang bagong estado galing sa backend, at i-sync ang display countdown dito
   const applyDto = useCallback((next: NotificationDto) => {
     setDto(next);
     setDisplaySeconds(next.remainingSeconds);
@@ -109,116 +106,144 @@ function useNotification() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/notification");
-      if (res.ok) applyDto(await res.json());
+      const response = await fetch("/api/notification", { cache: "no-store" });
+      if (!response.ok) return;
+      applyDto((await response.json()) as NotificationDto);
     } catch {
-      // Hayaan lang — susubukan ulit sa susunod na poll
+      // Try again on the next poll.
     }
   }, [applyDto]);
 
-  // Poll ang backend paminsan-minsan (kada 4 segundo) para manatiling updated
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 4000);
+    void refresh();
+    const id = setInterval(() => void refresh(), 4000);
     return () => clearInterval(id);
   }, [refresh]);
 
-  // Sa pagitan ng bawat poll, ito ang nagbibigay ng smooth na pagbaba ng countdown kada segundo
   useEffect(() => {
-    if (!dto || dto.notificationStatus !== "SENT") return;
-    const id = setInterval(() => setDisplaySeconds((s) => Math.max(0, s - 1)), 1000);
+    if (dto?.notificationStatus !== "SENT") return;
+    const id = setInterval(() => {
+      setDisplaySeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
     return () => clearInterval(id);
-  }, [dto?.notificationStatus]);
+  }, [dto?.notificationStatus, dto?.notificationSentAt]);
 
-  async function post(url: string) {
-    const res = await fetch(url, { method: "POST" });
-    if (res.ok) applyDto(await res.json());
-    return res.ok;
-  }
+  const post = useCallback(
+    async (url: string): Promise<boolean> => {
+      if (requestInProgress.current) return false;
+      requestInProgress.current = true;
+      setPending(true);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (error || !token) {
+          toast.error("Please log in again.");
+          return false;
+        }
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          toast.error(
+            response.status === 403
+              ? "Admin access required."
+              : "Unable to complete the request.",
+          );
+          return false;
+        }
+
+        applyDto((await response.json()) as NotificationDto);
+        await refresh();
+        return true;
+      } catch (error) {
+        console.error(error);
+        toast.error("Unable to connect to the server.");
+        return false;
+      } finally {
+        requestInProgress.current = false;
+        setPending(false);
+      }
+    },
+    [applyDto, refresh],
+  );
 
   return {
     dto,
     displaySeconds,
+    pending,
+    refresh,
     acknowledge: () => post("/api/notification-acknowledge"),
     release: () => post("/api/notification-release"),
   };
 }
 
 function Dashboard() {
-  const { dto, displaySeconds, acknowledge, release } = useNotification();
-  const historyRows = useNotificationHistoryPreview(); // pinakabagong 5, galing sa Supabase
-
-  // Acknowledge the active alert and stop the countdown.
-  async function handleAcknowledge() {
-    const ok = await acknowledge();
-    if (ok) {
-      toast.success("Acknowledged", {
-        description: "The alert has been acknowledged.",
-      });
-    }
-  }
-
-  // Send a manual release request.
-  async function handleRelease() {
-    const ok = await release();
-
-    if (ok) {
-      toast.success("Released", {
-        description: "The release request has been successfully recorded.",
-      });
-    }
-  }
-
-  // Kapag naubos ang 5-minute countdown nang walang acknowledgment,
-  // the server records an automatic release.
-  useEffect(() => {
-    if (dto?.notificationStatus === "EXPIRED" && dto.releasedBy === "auto") {
-      toast.success("Released Automatically", {
-        description:
-          "No action was taken within 5 minutes, so the waste was released automatically.",
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dto?.notificationStatus, dto?.releasedBy, dto?.notificationSentAt]);
-
-  const mm = String(Math.floor(displaySeconds / 60)).padStart(2, "0");
-  const ss = String(displaySeconds % 60).padStart(2, "0");
-  const countdown = `${mm}:${ss}`;
-
-  // Habang wala pang unang response galing sa backend (client-only ang fetch na ito, kaya
-  // wala pa nito sa unang SSR render) — simpleng loading placeholder muna
+  const { dto, displaySeconds, pending, acknowledge, release } = useNotification();
+  const { rows: historyRows, refreshHistory } = useNotificationHistoryPreview();
+  const { userRole, roleLoading } = useAppState();
+  const isAdmin = !roleLoading && userRole === "admin";
   const isLoading = dto === null;
-
-  const showReleaseButton =
-    (dto?.fillLevel ?? 0) >= 50;
-
-  const showAcknowledgeButton =
-    dto?.fillLevel === 100;
-
   const isReleased = dto?.releasedAt != null;
   const isAutoReleased = dto?.releasedBy === "auto";
+  const isLiveAlert = dto?.fillLevel === 100 && dto.notificationStatus === "SENT";
+  const showAcknowledgeButton = isAdmin && isLiveAlert;
+  const showReleaseButton =
+    isAdmin &&
+    dto?.fillLevel === 100 &&
+    !isReleased &&
+    (dto.notificationStatus === "SENT" ||
+      dto.notificationStatus === "ACKNOWLEDGED");
+
+  async function handleAcknowledge() {
+    if (await acknowledge()) {
+      toast.success("Acknowledged", {
+        description: "The countdown has stopped.",
+      });
+      await refreshHistory();
+    }
+  }
+
+  async function handleRelease() {
+    if (await release()) {
+      toast.success("Release Requested", {
+        description: "The release command has been recorded for the device.",
+      });
+      await refreshHistory();
+    }
+  }
+
+  const lastAutoRelease = useRef<number | null>(null);
+  useEffect(() => {
+    if (dto?.releasedBy !== "auto" || dto.releasedAt === null) return;
+    if (lastAutoRelease.current === dto.releasedAt) return;
+    lastAutoRelease.current = dto.releasedAt;
+    toast.info("Automatic Release Requested", {
+      description: "The countdown expired and a release request was recorded.",
+    });
+  }, [dto?.releasedBy, dto?.releasedAt]);
+
+  const countdown = `${String(Math.floor(displaySeconds / 60)).padStart(2, "0")}:${String(displaySeconds % 60).padStart(2, "0")}`;
+  const showAlertCard = dto?.fillLevel === 100 && dto.notificationStatus !== "NOT_SENT";
 
   return (
     <AppShell
       title="Notification Dashboard"
       subtitle="Waste Compartment Monitoring — Real-time Alerts"
-      // Mga button sa kanan ng header
       actions={
-        <>
-          <StatusPill tone="primary" className="hidden sm:inline-flex">
-            System Online
-          </StatusPill>
-        </>
+        <StatusPill tone="primary" className="hidden sm:inline-flex">
+          System Online
+        </StatusPill>
       }
     >
       <div className="space-y-5">
-        {/* Live alert card. Nagbabago ang itsura depende sa estadong galing sa backend */}
         {isLoading ? (
           <Card className="border-border p-4 sm:p-5">
             <p className="text-sm text-muted-foreground">Loading current status…</p>
           </Card>
-        ) : dto.wasteStatus === "NOT_FULL" ? (
-          // Walang aktibong alert — hindi pa FULL (o naalis na ang basura)
+        ) : !showAlertCard ? (
           <Card className="border-primary/40 p-4 sm:p-5">
             <div className="flex items-center gap-4">
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-primary/40 bg-primary/15 text-primary">
@@ -227,142 +252,82 @@ function Dashboard() {
               <div className="min-w-0">
                 <StatusPill tone="primary">All Clear</StatusPill>
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                  Waste Compartment — Not Full
+                  Waste Compartment — {dto.fillLevel === 100 ? "Monitoring" : "Not Full"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                <strong className="text-white">
-                Current Fill Level: {dto.fillLevel}%
-              </strong>
-              {" "}
-              Monitoring the ultrasonic sensor for a full-compartment reading.
+                  <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
+                  Monitoring the waste compartment fill level.
                 </p>
               </div>
-            {showReleaseButton && (
-                <Button
-                  variant="danger"
-                  onClick={handleRelease}
-                  disabled={isReleased}
-                  className="ml-auto"
-                >
-                  <Zap className="h-4 w-4" />
-                  {isReleased ? "Released" : "Release Now"}
-                </Button>
-              )}
             </div>
           </Card>
         ) : (
           <Card className="dl-glow-alert border-destructive/40 p-4 sm:p-5">
-         <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto_auto] lg:items-center">
+            <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto_auto] lg:items-center">
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-destructive/40 bg-destructive/15 text-destructive">
                 <AlertTriangle className="h-7 w-7" />
               </span>
-            <div className="min-w-0">
-                  {/* Nagbabago ang label depende sa kasalukuyang notification status */}
-                  {dto.notificationStatus === "SENT" && (
-                    <StatusPill tone="danger">Live Alert</StatusPill>
-                  )}
-
-                  {dto.notificationStatus === "ACKNOWLEDGED" && (
-                    <StatusPill tone="primary">Acknowledged</StatusPill>
-                  )}
-
-                  {isReleased && (
-                    <StatusPill tone="warning">
-                      {isAutoReleased ? "Released Automatically" : "Released"}
-                    </StatusPill>
-                  )}
-
-                  <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                    DrainLift Unit – Waste Full
-                  </h2>
-
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {dto.notificationStatus === "SENT" &&
-                      "The waste compartment has reached maximum capacity. Immediate collection is required."}
-
-                    {dto.notificationStatus === "ACKNOWLEDGED" &&
-                     "The alert has been acknowledged by a barangay official."
-                    }
-
-                    {isReleased && !isAutoReleased &&
-                      "The waste has been released manually."}
-
-                    {isReleased && isAutoReleased &&
-                      "The waste was released automatically after the 5-minute countdown expired."}
-                  </p>
-                </div>
-
-                {/* Countdown — nasa sariling column sa pagitan ng alert info at buttons */}
-                <div className="shrink-0 border-l border-border pl-7 pr-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Auto-Release In
-                  </p>
-
-                  <p className="mt-1 font-mono text-3xl font-bold text-destructive">
-                    {dto.notificationStatus === "SENT" ? countdown : "--:--"}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {showAcknowledgeButton && (
-                    <Button
-                      variant="primary"
-                      onClick={handleAcknowledge}
-                      disabled={isReleased || dto.notificationStatus !== "SENT"}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      {dto.notificationStatus === "ACKNOWLEDGED"
-                        ? "Acknowledged"
-                        : "Acknowledge Now"}
-                    </Button>
-                  )}
-
-                {showReleaseButton && (
-                    <Button
-                      variant="danger"
-                      onClick={handleRelease}
-                      disabled={isReleased}
-                    >
-                      <Zap className="h-4 w-4" />
-                      {isReleased ? "Released" : "Release Now"}
-                    </Button>
-                  )}
-                </div>
+              <div className="min-w-0">
+                {dto.notificationStatus === "SENT" && (
+                  <StatusPill tone="danger">Live Alert</StatusPill>
+                )}
+                {dto.notificationStatus === "ACKNOWLEDGED" && (
+                  <StatusPill tone="primary">Acknowledged</StatusPill>
+                )}
+                {isReleased && (
+                  <StatusPill tone="warning">
+                    {isAutoReleased ? "Auto-Release Requested" : "Release Requested"}
+                  </StatusPill>
+                )}
+                <h2 className="mt-2 text-xl font-bold sm:text-2xl">
+                  DrainLift Unit – Waste Full
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {dto.notificationStatus === "SENT" &&
+                    "The waste compartment has reached maximum capacity. Immediate collection is required."}
+                  {dto.notificationStatus === "ACKNOWLEDGED" &&
+                    "The alert has been acknowledged. Automatic release has been cancelled for this alert."}
+                  {isReleased &&
+                    (isAutoReleased
+                      ? "The countdown expired. An automatic release request has been recorded."
+                      : "A manual release request has been recorded.")}
+                </p>
               </div>
+              <div className="shrink-0 border-l border-border pl-7 pr-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Auto-Release In
+                </p>
+                <p className="mt-1 font-mono text-3xl font-bold text-destructive">
+                  {dto.notificationStatus === "SENT" ? countdown : "--:--"}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {showAcknowledgeButton && (
+                  <Button variant="primary" onClick={handleAcknowledge} disabled={pending}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Acknowledge Now
+                  </Button>
+                )}
+                {showReleaseButton && (
+                  <Button variant="danger" onClick={handleRelease} disabled={pending}>
+                    <Zap className="h-4 w-4" />
+                    Release Now
+                  </Button>
+                )}
+              </div>
+            </div>
           </Card>
         )}
 
-        {/* Device info: owner, installation date, device number, at location */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <InfoCard
-            label="Owner"
-            value={device.owner}
-            icon={<Building2 className="h-4 w-4" />}
-          />
-          <InfoCard
-            label="Installation Date"
-            value={device.installationDate}
-            icon={<Calendar className="h-4 w-4" />}
-          />
-          <InfoCard
-            label="Device Number"
-            value={device.deviceNumber}
-            icon={<KeyRound className="h-4 w-4" />}
-          />
-          <InfoCard
-            label="Location"
-            value={device.location}
-            icon={<MapPin className="h-4 w-4" />}
-          />
+          <InfoCard label="Owner" value={device.owner} icon={<Building2 className="h-4 w-4" />} />
+          <InfoCard label="Installation Date" value={device.installationDate} icon={<Calendar className="h-4 w-4" />} />
+          <InfoCard label="Device Number" value={device.deviceNumber} icon={<KeyRound className="h-4 w-4" />} />
+          <InfoCard label="Location" value={device.location} icon={<MapPin className="h-4 w-4" />} />
         </div>
 
-        {/* Summary: totoong bilang galing sa Supabase audit log (buong history, hindi lang "today") */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard
-            value={historyRows?.length ?? "—"}
-            label="Recent Notifications"
-            icon={<Bell className="h-5 w-5" />}
-          />
+          <StatCard value={historyRows?.length ?? "—"} label="Recent Notifications" icon={<Bell className="h-5 w-5" />} />
           <StatCard
             value={historyRows?.filter((r) => r.status === "acknowledged").length ?? "—"}
             label="Acknowledged"
@@ -377,25 +342,18 @@ function Dashboard() {
           />
         </div>
 
-        {/* Notification history: pinakabagong 5 entries, totoong data galing sa Supabase */}
         <div className="space-y-3">
           <SectionTitle>Notification History</SectionTitle>
           <Card className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left">
-                  {/* Column headers */}
-                  {["#", "Notification", "Timestamp", "Device ID", "Fill Level", "Action"].map(
-                    (h) => (
-                      <th key={h} className="dl-label px-4 py-3">
-                        {h}
-                      </th>
-                    ),
-                  )}
+                  {["#", "Notification", "Timestamp", "Device ID", "Fill Level", "Action"].map((h) => (
+                    <th key={h} className="dl-label px-4 py-3">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {/* Habang hinihintay pa ang response galing sa backend */}
                 {historyRows === null && (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
@@ -403,7 +361,6 @@ function Dashboard() {
                     </td>
                   </tr>
                 )}
-                {/* Wala pang naka-log na history (bagong Supabase project, walang laman pa) */}
                 {historyRows !== null && historyRows.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
@@ -411,7 +368,6 @@ function Dashboard() {
                     </td>
                   </tr>
                 )}
-                {/* Isang row para sa bawat notification */}
                 {historyRows?.map((n) => (
                   <tr key={n.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-mono text-muted-foreground">{n.index}</td>
@@ -427,17 +383,10 @@ function Dashboard() {
                         <span className="font-mono text-xs">{n.fillLevel}%</span>
                       </div>
                     </td>
-                    {/* Bawat row dito ay laging RESOLVED na (acknowledged o released) */}
                     <td className="px-4 py-3">
-                      {n.status === "acknowledged" && (
-                        <StatusPill tone="primary">Acknowledged</StatusPill>
-                      )}
-                      {n.status === "auto-released" && (
-                        <StatusPill tone="warning">Released Automatically</StatusPill>
-                      )}
-                      {n.status === "released" && (
-                        <StatusPill tone="warning">Released</StatusPill>
-                      )}
+                      {n.status === "acknowledged" && <StatusPill tone="primary">Acknowledged</StatusPill>}
+                      {n.status === "auto-released" && <StatusPill tone="warning">Released Automatically</StatusPill>}
+                      {n.status === "released" && <StatusPill tone="warning">Released</StatusPill>}
                     </td>
                   </tr>
                 ))}

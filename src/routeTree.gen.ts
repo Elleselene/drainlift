@@ -15,6 +15,7 @@ import { Route as FaqRouteImport } from './routes/faq'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as ApiFillSimulationRouteImport } from './routes/api/fill-simulation'
 import { Route as ApiMotorCommandRouteImport } from './routes/api/motor-command'
 import { Route as ApiNotificationRouteImport } from './routes/api/notification'
 import { Route as ApiNotificationAcknowledgeRouteImport } from './routes/api/notification-acknowledge'
@@ -22,6 +23,7 @@ import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notific
 import { Route as ApiNotificationReleaseRouteImport } from './routes/api/notification-release'
 import { Route as ApiReleaseCompleteRouteImport } from './routes/api/release-complete'
 import { Route as ApiSensorReadingRouteImport } from './routes/api/sensor-reading'
+import { Route as ApiUserRoleRouteImport } from './routes/api/user-role'
 import { Route as ApiFullOverrideActivateRouteImport } from './routes/api/full-override/activate'
 import { Route as ApiFullOverrideClearRouteImport } from './routes/api/full-override/clear'
 
@@ -53,6 +55,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFillSimulationRoute = ApiFillSimulationRouteImport.update({
+  id: '/api/fill-simulation',
+  path: '/api/fill-simulation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMotorCommandRoute = ApiMotorCommandRouteImport.update({
@@ -91,6 +98,11 @@ const ApiSensorReadingRoute = ApiSensorReadingRouteImport.update({
   path: '/api/sensor-reading',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiUserRoleRoute = ApiUserRoleRouteImport.update({
+  id: '/api/user-role',
+  path: '/api/user-role',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiFullOverrideActivateRoute = ApiFullOverrideActivateRouteImport.update({
   id: '/api/full-override/activate',
   path: '/api/full-override/activate',
@@ -109,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
+  '/api/fill-simulation': typeof ApiFillSimulationRoute
   '/api/motor-command': typeof ApiMotorCommandRoute
   '/api/notification': typeof ApiNotificationRoute
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
@@ -116,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
+  '/api/user-role': typeof ApiUserRoleRoute
   '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
   '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
@@ -126,6 +140,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
+  '/api/fill-simulation': typeof ApiFillSimulationRoute
   '/api/motor-command': typeof ApiMotorCommandRoute
   '/api/notification': typeof ApiNotificationRoute
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
@@ -133,6 +148,7 @@ export interface FileRoutesByTo {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
+  '/api/user-role': typeof ApiUserRoleRoute
   '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
   '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
@@ -144,6 +160,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
+  '/api/fill-simulation': typeof ApiFillSimulationRoute
   '/api/motor-command': typeof ApiMotorCommandRoute
   '/api/notification': typeof ApiNotificationRoute
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
@@ -151,6 +168,7 @@ export interface FileRoutesById {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
+  '/api/user-role': typeof ApiUserRoleRoute
   '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
   '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
@@ -163,6 +181,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/profile'
+    | '/api/fill-simulation'
     | '/api/motor-command'
     | '/api/notification'
     | '/api/notification-acknowledge'
@@ -170,6 +189,7 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/release-complete'
     | '/api/sensor-reading'
+    | '/api/user-role'
     | '/api/full-override/activate'
     | '/api/full-override/clear'
   fileRoutesByTo: FileRoutesByTo
@@ -180,6 +200,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/profile'
+    | '/api/fill-simulation'
     | '/api/motor-command'
     | '/api/notification'
     | '/api/notification-acknowledge'
@@ -187,6 +208,7 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/release-complete'
     | '/api/sensor-reading'
+    | '/api/user-role'
     | '/api/full-override/activate'
     | '/api/full-override/clear'
   id:
@@ -197,6 +219,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/profile'
+    | '/api/fill-simulation'
     | '/api/motor-command'
     | '/api/notification'
     | '/api/notification-acknowledge'
@@ -204,6 +227,7 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/release-complete'
     | '/api/sensor-reading'
+    | '/api/user-role'
     | '/api/full-override/activate'
     | '/api/full-override/clear'
   fileRoutesById: FileRoutesById
@@ -215,6 +239,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   ProfileRoute: typeof ProfileRoute
+  ApiFillSimulationRoute: typeof ApiFillSimulationRoute
   ApiMotorCommandRoute: typeof ApiMotorCommandRoute
   ApiNotificationRoute: typeof ApiNotificationRoute
   ApiNotificationAcknowledgeRoute: typeof ApiNotificationAcknowledgeRoute
@@ -222,6 +247,7 @@ export interface RootRouteChildren {
   ApiNotificationReleaseRoute: typeof ApiNotificationReleaseRoute
   ApiReleaseCompleteRoute: typeof ApiReleaseCompleteRoute
   ApiSensorReadingRoute: typeof ApiSensorReadingRoute
+  ApiUserRoleRoute: typeof ApiUserRoleRoute
   ApiFullOverrideActivateRoute: typeof ApiFullOverrideActivateRoute
   ApiFullOverrideClearRoute: typeof ApiFullOverrideClearRoute
 }
@@ -268,6 +294,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fill-simulation': {
+      id: '/api/fill-simulation'
+      path: '/api/fill-simulation'
+      fullPath: '/api/fill-simulation'
+      preLoaderRoute: typeof ApiFillSimulationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/motor-command': {
@@ -319,6 +352,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSensorReadingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/user-role': {
+      id: '/api/user-role'
+      path: '/api/user-role'
+      fullPath: '/api/user-role'
+      preLoaderRoute: typeof ApiUserRoleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/full-override/activate': {
       id: '/api/full-override/activate'
       path: '/api/full-override/activate'
@@ -343,6 +383,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   ProfileRoute: ProfileRoute,
+  ApiFillSimulationRoute: ApiFillSimulationRoute,
   ApiMotorCommandRoute: ApiMotorCommandRoute,
   ApiNotificationRoute: ApiNotificationRoute,
   ApiNotificationAcknowledgeRoute: ApiNotificationAcknowledgeRoute,
@@ -350,6 +391,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationReleaseRoute: ApiNotificationReleaseRoute,
   ApiReleaseCompleteRoute: ApiReleaseCompleteRoute,
   ApiSensorReadingRoute: ApiSensorReadingRoute,
+  ApiUserRoleRoute: ApiUserRoleRoute,
   ApiFullOverrideActivateRoute: ApiFullOverrideActivateRoute,
   ApiFullOverrideClearRoute: ApiFullOverrideClearRoute,
 }

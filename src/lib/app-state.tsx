@@ -15,6 +15,8 @@ import { supabase } from "./supabase-client";
 
 type Theme = "dark" | "light";
 
+type UserRole = "admin" | "user" | null;
+
 // Mga info ng user na naka-store sa Supabase "profiles" table (email ay galing sa
 // Supabase Auth session mismo, hindi na kailangang doblehin dito)
 type Profile = {
@@ -35,6 +37,8 @@ type AppState = {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   profile: Profile;
+  userRole: UserRole;
+  roleLoading: boolean;
   updateProfile: (p: Partial<Profile>) => Promise<{ error: string | null }>;
   demoMode: boolean;
 };
@@ -64,6 +68,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
+  const [userRole, setUserRole] = useState<UserRole>(null);
+  const [roleLoading, setRoleLoading] = useState(true);
 
   // Pag na-load ang page: (1) kunin ang naka-save na theme, (2) tingnan kung may existing
   // Supabase session na (auto-login kung dati nang naka-sign in), (3) makinig sa susunod na
@@ -94,39 +100,97 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [session?.user.id]);
 
-  // Pag nagbago ang theme, i-toggle yung "dark" class sa <html> para mag-apply yung dark colors
+
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }, [theme]);
+    let cancelled = false;
 
-  // Palit dark <-> light tapos i-save sa localStorage
-  const toggleTheme = useCallback(() => {
-    setTheme((t) => {
-      const next = t === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_KEY, next);
-      return next;
-    });
-  }, []);
+    setUserRole(null);
+    setRoleLoading(Boolean(session?.access_token));
 
-  // TOTOONG login gamit ang Supabase Auth (email + password)
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
-  }, []);
+    async function loadRole(token: string) {
+      try {
+        const res = await fetch("/api/user-role", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-  // Logout: tatanggalin ni Supabase ang session
-  const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-  }, []);
+      if (!res.ok) {
+        console.error("User role API failed:", res.status);
+        return;
+      }
+
+      const data: { role?: string } = await res.json();
+
+      console.log("User role API response:", data);
+
+        if (!cancelled) {
+          setUserRole(
+            data.role === "admin" || data.role === "user"
+              ? data.role
+              : null,
+          );
+        }
+      } catch {
+        if (!cancelled) setUserRole(null);
+      } finally {
+        if (!cancelled) setRoleLoading(false);
+      }
+    }
+
+    if (session?.access_token) {
+      void loadRole(session.access_token);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token]);
+
+
+    // Pag nagbago ang theme, i-toggle yung "dark" class sa <html> para mag-apply yung dark colors
+    useEffect(() => {
+      document.documentElement.classList.toggle("dark", theme === "dark");
+    }, [theme]);
+
+    // Palit dark <-> light tapos i-save sa localStorage
+    const toggleTheme = useCallback(() => {
+      setTheme((t) => {
+        const next = t === "dark" ? "light" : "dark";
+        localStorage.setItem(THEME_KEY, next);
+        return next;
+      });
+    }, []);
+
+    // TOTOONG login gamit ang Supabase Auth (email + password)
+    const signIn = useCallback(async (email: string, password: string) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error: error?.message ?? null };
+    }, []);
+
+    // Logout: tatanggalin ni Supabase ang session
+    const signOut = useCallback(async () => {
+      await supabase.auth.signOut();
+    }, []);
 
   // I-update yung profile row sa Supabase "profiles" table (RLS: sarili lang ng user ang
   // pwede niyang i-update, kaya safe direktang tawagin ito mula sa browser)
   const updateProfile = useCallback(
-    async (p: Partial<Profile>) => {
-      if (!session?.user) return { error: "Not signed in" };
-      const { error } = await supabase.from("profiles").update(p).eq("id", session.user.id);
+  async (p: Partial<Profile>) => {
+    if (!session?.user) return { error: "Not signed in" };
+      const changes = {
+        ...(p.name !== undefined ? { name: p.name } : {}),
+        ...(p.phone !== undefined ? { phone: p.phone } : {}),
+      };
+
+      const { error } = await supabase
+        .from("profiles")
+        .update(changes)
+        .eq("id", session.user.id);
+
       if (error) return { error: error.message };
-      setProfile((prev) => ({ ...prev, ...p }));
+
+        setProfile((prev) => ({ ...prev, ...changes }));
       return { error: null };
     },
     [session?.user.id],
@@ -144,9 +208,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       signOut,
       profile,
       updateProfile,
+      userRole,
+      roleLoading,
       demoMode: false,
     }),
-    [theme, toggleTheme, session, authLoading, signIn, signOut, profile, updateProfile],
+      [
+      theme,
+      toggleTheme,
+      session,
+      authLoading,
+      signIn,
+      signOut,
+      profile,
+      updateProfile,
+      userRole,
+      roleLoading,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

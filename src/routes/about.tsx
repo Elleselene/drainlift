@@ -1,9 +1,14 @@
-import { useRef } from "react";
+
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, Droplet, Settings, Users } from "lucide-react";
+import { Clock, Droplet, Settings, Users, X } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/dl/AppShell";
 import { Card, SectionTitle } from "@/components/dl/primitives";
 import { initialsOf, researchers } from "@/lib/drainlift";
+import { useAppState } from "@/lib/app-state";
+import { supabase } from "@/lib/supabase-client";
+
 
 // About page (URL: "/about"): paliwanag tungkol sa project at sa mga researchers
 export const Route = createFileRoute("/about")({
@@ -50,25 +55,120 @@ const cards = [
 ];
 
 function AboutPage() {
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { userRole, roleLoading } = useAppState();
+  const isAdmin = !roleLoading && userRole === "admin";
+
   const commandSent = useRef(false);
 
-  const fullPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sliderOpen, setSliderOpen] = useState(false);
+  const [fillLevel, setFillLevel] = useState(0);
+  const [bypassEnabled, setBypassEnabledLocal] = useState(false);
+  const [bypassLoading, setBypassLoading] = useState(true);
+  const [bypassPending, setBypassPending] = useState(false);
 
-  const fullCommandSent = useRef(false);
-  const clearCommandSent = useRef(false);
+  const simulationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleFillChange(level: number) {
+    setFillLevel(level);
+
+    if (simulationTimer.current) {
+      clearTimeout(simulationTimer.current);
+    }
+
+    simulationTimer.current = setTimeout(() => {
+      void saveSimulatedFill(level);
+    }, 300);
+  }
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setSliderOpen(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!sliderOpen) return;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setSliderOpen(false);
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [sliderOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (simulationTimer.current) {
+        clearTimeout(simulationTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBypass() {
+      try {
+        const response = await fetch("/api/notification", { cache: "no-store" });
+        if (!response.ok) throw new Error("Unable to load Bypass Mode");
+        const state = await response.json();
+        if (!cancelled) {
+          setBypassEnabledLocal(Boolean(state.fullOverrideActive));
+          setFillLevel(Number(state.fillLevel) || 0);
+        }
+      } catch {
+        if (!cancelled) toast.error("Unable to load Bypass Mode");
+      } finally {
+        if (!cancelled) setBypassLoading(false);
+      }
+    }
+    void loadBypass();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function toggleBypass() {
+    if (!isAdmin || bypassPending || bypassLoading) return;
+    setBypassPending(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Please log in again.");
+      const response = await fetch("/api/fill-simulation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "toggle-bypass", enabled: !bypassEnabled }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to switch Bypass Mode");
+      setBypassEnabledLocal(result.state.fullOverrideActive);
+      setFillLevel(result.state.fillLevel);
+      toast.success(result.state.fullOverrideActive ? "Bypass Mode ON" : "Bypass Mode OFF");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to switch Bypass Mode");
+    } finally {
+      setBypassPending(false);
+    }
+  }
 
   async function secretActivateMotor() {
-    if (commandSent.current) return;
+    if (!isAdmin || commandSent.current) return;
 
-    commandSent.current = true;
+     commandSent.current = true;
 
     try {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error || !data.session?.access_token) {
+        throw new Error("No active login session");
+      }
       const response = await fetch("/api/motor-command", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session.access_token}`,
         },
         body: JSON.stringify({
           command: "DETECT",
@@ -82,112 +182,39 @@ function AboutPage() {
       console.log("DETECT command sent");
     } catch (error) {
       console.error("Failed to send DETECT command:", error);
+      toast.error("Unable to send DETECT command");
+    } finally {
+      commandSent.current = false;
     }
   }
 
-  function startSecretPress() {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
+  async function saveSimulatedFill(level: number) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+
+      if (!token) return;
+
+      const response = await fetch("/api/fill-simulation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "set",
+          fillLevel: level,
+        }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        toast.error(result.error || "Failed to update bypass fill level");
+      }
+    } catch (error) {
+      console.error("Simulation update failed:", error);
     }
-
-    commandSent.current = false;
-
-    pressTimer.current = setTimeout(() => {
-      pressTimer.current = null;
-      void secretActivateMotor();
-    }, 3000);
   }
-
-  function cancelSecretPress() {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-  }
-
-  async function secretTriggerFull() {
-    if (fullCommandSent.current) return;
-
-    fullCommandSent.current = true;
-
-  try {
-    const response = await fetch("/api/full-override/activate", {
-      method: "POST",
-      credentials: "same-origin",
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to activate FULL");
-    }
-
-    window.location.assign("/");
-  } catch (error) {
-    fullCommandSent.current = false;
-    console.error("FULL activation failed:", error);
-  }
-}
-
-function startFullPress() {
-  if (fullPressTimer.current) {
-    clearTimeout(fullPressTimer.current);
-  }
-
-  fullCommandSent.current = false;
-
-  fullPressTimer.current = setTimeout(() => {
-    fullPressTimer.current = null;
-    void secretTriggerFull();
-  }, 3000);
-}
-
-function cancelFullPress() {
-  if (fullPressTimer.current) {
-    clearTimeout(fullPressTimer.current);
-    fullPressTimer.current = null;
-  }
-}
-
-  async function secretClearFull() {
-    if (clearCommandSent.current) return;
-
-  clearCommandSent.current = true;
-
-  try {
-    const response = await fetch("/api/full-override/clear", {
-      method: "POST",
-      credentials: "same-origin",
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to clear FULL");
-    }
-
-    window.location.assign("/");
-  } catch (error) {
-    clearCommandSent.current = false;
-    console.error("FULL clear failed:", error);
-  }
-}
-
-function startClearPress() {
-  if (clearPressTimer.current) {
-    clearTimeout(clearPressTimer.current);
-  }
-
-  clearCommandSent.current = false;
-
-  clearPressTimer.current = setTimeout(() => {
-    clearPressTimer.current = null;
-    void secretClearFull();
-  }, 3000);
-}
-
-function cancelClearPress() {
-  if (clearPressTimer.current) {
-    clearTimeout(clearPressTimer.current);
-    clearPressTimer.current = null;
-  }
-}
 
 
   return (
@@ -198,24 +225,31 @@ function cancelClearPress() {
       <div className="space-y-6">
         {/* Hero / heading ng page */}
         <div className="rounded-xl bg-gradient-to-b from-primary/10 to-transparent py-10 text-center">
-          <button
-            type="button"
-            onPointerDown={startSecretPress}
-            onPointerUp={cancelSecretPress}
-            onPointerLeave={cancelSecretPress}
-            onPointerCancel={cancelSecretPress}
-            onContextMenu={(e) => e.preventDefault()}
-            className="mx-auto -mb-3.5 block select-none border-0 bg-transparent p-0"
-            aria-label="DrainLift"
-          >
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => void secretActivateMotor()}
+              className="mx-auto -mb-3.5 block select-none border-0 bg-transparent p-0"
+              aria-label="DrainLift"
+            >
+              <img
+                src="/logo.png"
+                alt="DrainLift"
+                draggable={false}
+                className="h-20 w-20 select-none object-contain"
+              />
+            </button>
+          ) : (
             <img
               src="/logo.png"
               alt="DrainLift"
-              draggable={false}
-              className="h-20 w-20 select-none object-contain"
+              className="mx-auto -mb-3.5 h-20 w-20 object-contain"
             />
-          </button>
-          <h2 className="mt-4 text-3xl font-bold sm:text-4xl">About DrainLift</h2>
+          )}
+
+          <h2 className="mt-4 text-3xl font-bold sm:text-4xl">
+            About DrainLift
+          </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Keeping our canals clear, one barangay at a time.
           </p>
@@ -225,9 +259,27 @@ function cancelClearPress() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {cards.map((c) => (
             <Card key={c.title} className="p-5">
-              <c.icon className="h-6 w-6 text-foreground" />
+              {c.title === "Automatic Fail-Safe" && isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => void toggleBypass()}
+                  disabled={bypassPending || bypassLoading}
+                  aria-label={bypassEnabled ? "Turn Bypass OFF" : "Turn Bypass ON"}
+                  aria-pressed={bypassEnabled}
+                  title={bypassEnabled ? "Bypass ON — click to turn OFF" : "Bypass OFF — click to turn ON"}
+                  className="rounded-full disabled:opacity-50"
+                >
+                  <span className={bypassEnabled ? "flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-900" : "flex h-9 w-9 items-center justify-center text-foreground"}>
+                    <Clock className="h-6 w-6" />
+                  </span>
+                </button>
+              ) : (
+                <c.icon className="h-6 w-6 text-foreground" />
+              )}
               <h3 className="mt-4 font-semibold">{c.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{c.body}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {c.body}
+              </p>
             </Card>
           ))}
         </div>
@@ -246,56 +298,109 @@ function cancelClearPress() {
         <div className="space-y-3">
           <SectionTitle>Meet the Researchers</SectionTitle>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {researchers.map((r) => {
-            const isCarla = r.name.toLowerCase().includes("carla");
-            const isChad = r.name.toLowerCase().includes("chad");
+            {researchers.map((r) => {
+              const isCarla = r.name.toLowerCase().includes("carla");
 
-            return (
-              <Card key={r.name} className="p-6 text-center">
-                {isCarla || isChad ? (
-                  <button
-                    type="button"
-                    onPointerDown={isCarla ? startFullPress : startClearPress}
-                    onPointerUp={isCarla ? cancelFullPress : cancelClearPress}
-                    onPointerLeave={isCarla ? cancelFullPress : cancelClearPress}
-                    onPointerCancel={isCarla ? cancelFullPress : cancelClearPress}
-                    onContextMenu={(e) => e.preventDefault()}
-                    className="mx-auto grid h-20 w-20 touch-none select-none place-items-center overflow-hidden rounded-full bg-gradient-to-br from-info to-primary font-mono text-lg font-bold text-primary-foreground"
-                    aria-label={r.name}
-                  >
-                    {r.photo ? (
-                      <img
-                        src={r.photo}
-                        alt={r.name}
-                        draggable={false}
-                        className="h-full w-full select-none object-cover"
-                      />
-                    ) : (
-                      initialsOf(r.name)
-                    )}
-                  </button>
-                ) : (
-                  <span className="mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-info to-primary font-mono text-lg font-bold text-primary-foreground">
-                    {r.photo ? (
-                      <img
-                        src={r.photo}
-                        alt={r.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      initialsOf(r.name)
-                    )}
-                  </span>
-                )}
+              const photo = r.photo ? (
+                <img
+                  src={r.photo}
+                  alt={r.name}
+                  draggable={false}
+                  className="h-full w-full select-none object-cover"
+                />
+              ) : (
+                initialsOf(r.name)
+              );
 
-                <p className="mt-4 font-semibold">{r.name}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{r.role}</p>
-              </Card>
-            );
-          })}
+              const imageClass =
+                "mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-info to-primary font-mono text-lg font-bold text-primary-foreground";
+
+              return (
+                <Card key={r.name} className="p-6 text-center">
+                  {isCarla && isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!bypassEnabled) {
+                          toast.info("Turn Bypass ON using the clock icon first.");
+                          return;
+                        }
+                        setSliderOpen(true);
+                      }}
+                      className={imageClass}
+                      aria-label={r.name}
+                    >
+                      {photo}
+                    </button>
+                  ) : (
+                    <span className={imageClass}>
+                      {photo}
+                    </span>
+                  )}
+
+                  <p className="mt-4 font-semibold">{r.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {r.role}
+                  </p>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </div>
+
+
+    {sliderOpen && isAdmin && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+        onClick={() => setSliderOpen(false)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Fill Level Control"
+          className="relative flex w-32 flex-col items-center rounded-2xl border border-border bg-background px-3 py-4 shadow-xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => setSliderOpen(false)}
+            aria-label="Close"
+            className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+
+          <span className="mt-5 text-lg font-semibold tabular-nums">
+            {fillLevel}%
+          </span>
+
+          <div className="relative my-5 flex h-44 w-10 items-center justify-center">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={fillLevel}
+              onChange={(event) =>
+                handleFillChange(Number(event.target.value))
+              }
+              aria-label="Bypass fill level"
+              className="absolute h-2 w-40 cursor-pointer accent-emerald-500"
+              style={{
+                transform: "rotate(-90deg)",
+                touchAction: "none",
+              }}
+            />
+          </div>
+
+          <span className="text-[10px] text-muted-foreground">
+            Fill Level
+          </span>
+        </div>
+      </div>
+    )}
+
     </AppShell>
   );
 }
