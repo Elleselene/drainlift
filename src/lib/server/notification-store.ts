@@ -460,13 +460,9 @@ async function processEffectiveFill(
 
 
 
-  // Keep the reading visible while stopped, without generating alerts.
-
-  if (current.hardware_system_active !== true || !isOnline(current)) {
-
-    return toDto(await saveRow(basePatch));
-
-  }
+  // UI alerts are based on the effective fill level, even in Bypass mode
+  // when the Raspberry Pi is offline. Hardware release remains guarded
+  // separately by releaseNotification() and applyExpiry().
 
 
 
@@ -758,9 +754,11 @@ export async function cancelStoppedRelease(): Promise<NotificationDto> {
 
   if (row.hardware_system_active === true && isOnline(row)) return toDto(row);
 
-  const updated = await saveRow(normalPatch);
-
-  return toDto(updated);
+  // Cancel only an undelivered pending release. Keep the FULL alert
+  // available for acknowledgement even while the device is offline.
+  if (row.released_at === null) return toDto(row);
+  const updated = await updateIf(normalPatch, (q) => q.eq("released_at", row.released_at));
+  return toDto(updated ?? (await fetchRow()));
 
 }
 
@@ -778,7 +776,7 @@ export async function reportHardwareStatus(active: boolean): Promise<Notificatio
 
     const updated = await saveRow({
 
-      ...normalPatch,
+      ...(current.released_at !== null ? normalPatch : {}),
 
       hardware_system_active: false,
 
