@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as FaqRouteImport } from './routes/faq'
+import { Route as HardwareStatusRouteImport } from './routes/hardware-status'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
@@ -40,6 +41,11 @@ const AboutRoute = AboutRouteImport.update({
 const FaqRoute = FaqRouteImport.update({
   id: '/faq',
   path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HardwareStatusRoute = HardwareStatusRouteImport.update({
+  id: '/hardware-status',
+  path: '/hardware-status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/faq': typeof FaqRoute
+  '/hardware-status': typeof HardwareStatusRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/faq': typeof FaqRoute
+  '/hardware-status': typeof HardwareStatusRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/faq': typeof FaqRoute
+  '/hardware-status': typeof HardwareStatusRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/faq'
+    | '/hardware-status'
     | '/login'
     | '/notifications'
     | '/profile'
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/faq'
+    | '/hardware-status'
     | '/login'
     | '/notifications'
     | '/profile'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/faq'
+    | '/hardware-status'
     | '/login'
     | '/notifications'
     | '/profile'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   FaqRoute: typeof FaqRoute
+  HardwareStatusRoute: typeof HardwareStatusRoute
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   ProfileRoute: typeof ProfileRoute
@@ -273,6 +286,13 @@ declare module '@tanstack/react-router' {
       path: '/faq'
       fullPath: '/faq'
       preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hardware-status': {
+      id: '/hardware-status'
+      path: '/hardware-status'
+      fullPath: '/hardware-status'
+      preLoaderRoute: typeof HardwareStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -380,6 +400,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   FaqRoute: FaqRoute,
+  HardwareStatusRoute: HardwareStatusRoute,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   ProfileRoute: ProfileRoute,

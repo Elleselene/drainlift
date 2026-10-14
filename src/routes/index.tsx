@@ -23,6 +23,7 @@ import {
 } from "@/components/dl/primitives";
 import { device } from "@/lib/drainlift";
 import { supabase } from "@/lib/supabase-client";
+import { useAppState } from "@/lib/app-state";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -68,6 +69,7 @@ type NotificationDto = {
   actuatorActive: boolean;
   releaseArmed: boolean;
   fullOverrideActive: boolean;
+  hardwareSystemActive: boolean | null;
 };
 
 function useNotificationHistoryPreview() {
@@ -148,7 +150,7 @@ function useNotification() {
         if (!response.ok) {
           toast.error(
             response.status === 403
-              ? "Your account is not authorized for this action."
+              ? "Admin access required."
               : "Unable to complete the request.",
           );
           return false;
@@ -182,15 +184,19 @@ function useNotification() {
 function Dashboard() {
   const { dto, displaySeconds, pending, acknowledge, release } = useNotification();
   const { rows: historyRows, refreshHistory } = useNotificationHistoryPreview();
+  const { userRole, roleLoading } = useAppState();
+  const isAuthenticated = !roleLoading && (userRole === "admin" || userRole === "user");
   const isLoading = dto === null;
   const isReleased = dto?.releasedAt != null;
   const isAutoReleased = dto?.releasedBy === "auto";
   const isLiveAlert = dto?.fillLevel === 100 && dto.notificationStatus === "SENT";
-  const showAcknowledgeButton = isLiveAlert;
+  const showAcknowledgeButton = isAuthenticated && isLiveAlert;
   const showReleaseButton =
+    isAuthenticated &&
     dto?.fillLevel === 100 &&
     !isReleased &&
-    (dto.notificationStatus === "SENT" ||
+    (dto.hardwareSystemActive === false ||
+      dto.notificationStatus === "SENT" ||
       dto.notificationStatus === "ACKNOWLEDGED");
 
   async function handleAcknowledge() {
@@ -254,6 +260,17 @@ function Dashboard() {
                   <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
                   Monitoring the waste compartment fill level.
                 </p>
+                {dto.hardwareSystemActive === false && showReleaseButton && (
+                  <div className="mt-3">
+                    <Button variant="danger" onClick={handleRelease} disabled={pending}>
+                      <Zap className="h-4 w-4" />
+                      Release Now
+                    </Button>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      System stopped — request will be cancelled without moving the actuator.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </Card>

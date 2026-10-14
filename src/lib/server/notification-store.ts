@@ -21,6 +21,7 @@ type StateRow = {
   released_by: ReleasedBy;
   full_override_active: boolean;
   actual_fill_level: number | null;
+  hardware_system_active: boolean | null;
 };
 
 export type NotificationDto = {
@@ -36,6 +37,7 @@ export type NotificationDto = {
   actuatorActive: boolean;
   releaseArmed: boolean;
   fullOverrideActive: boolean;
+  hardwareSystemActive: boolean | null;
 };
 
 function toEpoch(iso: string | null): number | null {
@@ -62,6 +64,7 @@ function toDto(row: StateRow): NotificationDto {
     actuatorActive: row.released_at !== null,
     releaseArmed: row.release_armed,
     fullOverrideActive: row.full_override_active,
+    hardwareSystemActive: row.hardware_system_active,
   };
 }
 
@@ -130,6 +133,7 @@ async function applyExpiry(row: StateRow): Promise<StateRow> {
   const sentAt = toEpoch(row.notification_sent_at);
 
   if (
+    row.hardware_system_active !== true ||
     row.notification_status !== "SENT" ||
     sentAt === null ||
     Date.now() - sentAt < NOTIFICATION_WINDOW_MS
@@ -144,7 +148,7 @@ async function applyExpiry(row: StateRow): Promise<StateRow> {
       released_by: "auto",
       release_armed: false,
     },
-    (q) => q.eq("notification_status", "SENT").is("released_at", null),
+    (q) => q.eq("hardware_system_active", true).eq("notification_status", "SENT").is("released_at", null),
   );
 
   if (!updated) return fetchRow();
@@ -185,6 +189,11 @@ async function processEffectiveFill(
     ...(options.actualSensor ? { actual_fill_level: clamped } : {}),
   };
 
+  // Keep the reading visible while stopped, without generating alerts.
+  if (current.hardware_system_active !== true) {
+    return toDto(await saveRow(basePatch));
+  }
+
   // Re-arm only after the measured fill drops below 50%.
   // Never erase a pending hardware release request.
   if (clamped < RESET_THRESHOLD) {
@@ -215,7 +224,7 @@ async function processEffectiveFill(
         released_by: null,
         release_armed: true,
       },
-      (q) => q.eq("notification_status", "NOT_SENT").is("released_at", null),
+      (q) => q.eq("hardware_system_active", true).eq("notification_status", "NOT_SENT").is("released_at", null),
     );
     if (updated) return toDto(updated);
   }
@@ -267,14 +276,14 @@ export async function setBypassEnabled(enabled: boolean): Promise<NotificationDt
 
 export async function acknowledgeNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
-  if (current.notification_status !== "SENT") return toDto(current);
+  if (current.hardware_system_active !== true || current.notification_status !== "SENT") return toDto(current);
 
   const updated = await updateIf(
     {
       notification_status: "ACKNOWLEDGED",
       acknowledged_at: new Date().toISOString(),
     },
-    (q) => q.eq("notification_status", "SENT"),
+    (q) => q.eq("hardware_system_active", true).eq("notification_status", "SENT"),
   );
 
   if (!updated) return toDto(await fetchRow());
@@ -284,6 +293,10 @@ export async function acknowledgeNotification(): Promise<NotificationDto> {
 
 export async function releaseNotification(): Promise<NotificationDto> {
   const current = await applyExpiry(await fetchRow());
+  // A stopped device can accept a UI click, but never creates a release command.
+  if (current.hardware_system_active !== true) {
+    return cancelStoppedRelease();
+  }
 
   if (
     current.fill_level !== FULL_THRESHOLD ||
@@ -302,7 +315,8 @@ export async function releaseNotification(): Promise<NotificationDto> {
       release_armed: false,
     },
     (q) =>
-      q.is("released_at", null)
+      q.eq("hardware_system_active", true)
+        .is("released_at", null)
         .eq("fill_level", FULL_THRESHOLD)
         .in("notification_status", ["SENT", "ACKNOWLEDGED"]),
   );
@@ -348,4 +362,34 @@ export async function activateFullOverride(): Promise<NotificationDto> {
 
 export async function clearFullOverride(): Promise<NotificationDto> {
   return setBypassEnabled(false);
+}
+
+const stoppedPatch: Partial<StateRow> = {
+  notification_status: "NOT_SENT",
+  notification_sent_at: null,
+  acknowledged_at: null,
+  released_at: null,
+  released_by: null,
+  release_armed: true,
+};
+
+export async function cancelStoppedRelease(): Promise<NotificationDto> {
+  const row = await updateIf(stoppedPatch, (q) => q.eq("hardware_system_active", false));
+  return toDto(row ?? (await fetchRow()));
+}
+
+// Called only by the device-authenticated hardware-status endpoint.
+export async function reportHardwareStatus(active: boolean): Promise<NotificationDto> {
+  const current = await fetchRow();
+  if (!active) {
+    // Clear the command atomically with the OFF status so stale polls cannot revive it.
+    const row = await saveRow({ hardware_system_active: false, ...stoppedPatch });
+    return toDto(row);
+  }
+  if (current.hardware_system_active === true) return toDto(current);
+
+  // A fresh ON transition begins a new monitoring cycle.
+  const updated = await saveRow({ hardware_system_active: true, ...stoppedPatch });
+  if (updated.fill_level !== FULL_THRESHOLD) return toDto(updated);
+  return processEffectiveFill(FULL_THRESHOLD, { actualSensor: false });
 }
