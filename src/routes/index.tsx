@@ -207,7 +207,8 @@ function Dashboard() {
   const isAuthenticated = !roleLoading && (userRole === "admin" || userRole === "user");
   const status = dto?.notificationStatus ?? "NOT_SENT";
   const isAutoReleased = dto?.releasedBy === "auto";
-  const showAlertCard = dto !== null && status !== "NOT_SENT";
+  const showAlertCard = dto !== null && (status === "SENT" || status === "ACKNOWLEDGED" || status === "RELEASED");
+  const waitingForRearm = dto !== null && dto.fillLevel === 100 && status === "NOT_SENT" && !dto.releaseArmed;
   const canAct = isAuthenticated && status === "SENT" && !pending;
 
   async function handleAcknowledge() {
@@ -289,12 +290,12 @@ function Dashboard() {
               <div className="min-w-0">
                 <StatusPill tone="primary">All Clear</StatusPill>
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                  Waste Compartment — {dto.fillLevel >= 100 ? "Monitoring" : "Not Full"}
+                  Waste Compartment — {waitingForRearm ? "Waiting for Reset Threshold" : "Not Full"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
-                  {dto.fillLevel >= 100 && !dto.releaseArmed
-                    ? ""
+                  {waitingForRearm
+                    ? "Previous alert completed. Waiting for the fill level to drop below 50% before a new alert can start."
                     : "Monitoring the waste compartment fill level."}
                 </p>
               </div>
@@ -335,9 +336,9 @@ function Dashboard() {
                   )}
                 </p>
               </div>
-              <div className="shrink-0 border-l border-border pl-7 pr-2">
+              <div className="shrink-0 border-l border-border pl-7 pr-2" aria-live="polite">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Auto-Release In
+                  {status === "SENT" ? "AUTO-RELEASE IN" : "COUNTDOWN STOPPED"}
                 </p>
                 <p className="mt-1 font-mono text-3xl font-bold text-destructive">{countdown}</p>
               </div>

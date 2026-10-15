@@ -187,6 +187,10 @@ async function loadCurrent(): Promise<StateRow> {
   let row = await fetchRow();
   row = await autoReleaseIfExpired(row);
   row = await resetIfDue(row);
+  // Recover a missed 100% transition without restarting resolved alerts.
+  if (currentStatus(row) === "NOT_SENT" && row.fill_level >= FULL_LEVEL && row.release_armed === true) {
+    row = await applyEffectiveLevel(row, row.fill_level);
+  }
   return row;
 }
 
@@ -209,13 +213,11 @@ async function applyEffectiveLevel(
   };
 
   if (currentStatus(row) !== "NOT_SENT") {
-    const updated = await updateIf(base, (q) => q.eq("notification_status", row.notification_status));
-    return updated ?? fetchRow();
+    return saveRow(base);
   }
 
   if (level < REARM_BELOW) {
-    const updated = await updateIf({ ...base, release_armed: true }, (q) => q.eq("notification_status", "NOT_SENT"));
-    return updated ?? fetchRow();
+    return saveRow({ ...base, release_armed: true });
   }
 
   if (level >= FULL_LEVEL && row.release_armed === true) {
@@ -236,8 +238,7 @@ async function applyEffectiveLevel(
     return fetchRow();
   }
 
-  const updated = await updateIf(base, (q) => q.eq("notification_status", "NOT_SENT"));
-  return updated ?? fetchRow();
+  return saveRow(base);
 }
 
 export async function getNotificationState(): Promise<NotificationDto> {

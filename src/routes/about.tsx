@@ -149,6 +149,7 @@ function AboutPage() {
       if (!response.ok) throw new Error(result.error || "Unable to switch Bypass Mode");
       setBypassEnabledLocal(result.state.fullOverrideActive);
       setFillLevel(result.state.fillLevel);
+      toast.success(result.state.fullOverrideActive ? "Bypass Mode ON" : "Bypass Mode OFF");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to switch Bypass Mode");
     } finally {
@@ -160,6 +161,7 @@ function AboutPage() {
     if (!isAdmin || commandSent.current) return;
 
     if (!bypassEnabled) {
+      toast.info("Turn Bypass ON using the clock icon first.");
       return;
     }
 
@@ -334,6 +336,7 @@ function AboutPage() {
                       type="button"
                       onClick={() => {
                         if (!bypassEnabled) {
+                          toast.info("Turn Bypass ON using the clock icon first.");
                           return;
                         }
                         setSliderOpen(true);
