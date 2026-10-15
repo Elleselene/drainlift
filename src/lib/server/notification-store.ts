@@ -1,104 +1,96 @@
-// Server-only na "backend" para sa DrainLift notification lifecycle — naka-store sa Supabase
-// (Postgres), kaya PERMANENTE: hindi nawawala kahit mag-restart o mag-redeploy ang server.
-//
-// Kailangan munang gawin sa Supabase (SQL editor) ang mga tables na ito bago gumana ang mga
-// function sa baba — tingnan ang supabase/schema.sql sa root ng project.
-//
-// FINAL NOTIFICATION & RELEASE FLOW
-//
-//   0–49%   -> normal monitoring lang (walang Release / Acknowledge)
-//   50–99%  -> may Release Now. Kapag pinindot: Released (naka-log sa history)
-//   100%    -> magpapadala ng notification (SENT / LIVE ALERT) + 5-minute countdown,
-//              enabled ang Acknowledge Now at Release Now
-//   Acknowledge -> ACKNOWLEDGED, hihinto ang countdown (naka-log: Acknowledged)
-//   Release     -> RELEASED agad, hihinto ang countdown (naka-log: Released)
-//   Walang pinindot sa loob ng 5 minuto -> auto-release (naka-log: Released Automatically)
-//   Bumaba ulit sa ibaba ng 50% -> RESET ang buong cycle, ready na ulit
-//
-// Dahil "**/server/**" ang path nito, bawal itong i-import ng anumang client-side code
-// (naka-configure ito sa vite.config.ts, importProtection) — ang route files lang sa ilalim
-// ng src/routes/api/ ang dapat gumamit nito.
-
 import { supabaseAdmin } from "./supabase-admin";
+import type {
+  NotificationDto,
+  NotificationStatus,
+  ReleasedBy,
+  WasteStatus,
+} from "../notification-types";
 
-const NOTIFICATION_WINDOW_MS = 5 * 60 * 1000; // 5 minuto
-const FULL_THRESHOLD = 100; // percent — dito ituturing na "FULL" at magpapadala ng notification
-const RELEASE_THRESHOLD = 50; // percent — mula dito pataas, puwede nang mag-Release Now
-const STATE_ROW_ID = 1; // iisa lang na row ang notification_state (kasalukuyang buhay na estado)
+export type { NotificationDto, NotificationStatus, ReleasedBy, WasteStatus };
 
-export type WasteStatus = "FULL" | "NOT_FULL";
-// Tandaan: ang "EXPIRED" ay ginagamit para sa LAHAT ng na-release na alert (manual man o auto).
-// Ang `releasedBy` ("manual" | "auto") ang nagsasabi kung alin.
-export type NotificationStatus = "NOT_SENT" | "SENT" | "ACKNOWLEDGED" | "EXPIRED";
-export type ReleasedBy = "manual" | "auto" | null;
+const COUNTDOWN_MS = 5 * 60 * 1000;
+const RESET_DELAY_MS = 90 * 1000;
+const FULL_LEVEL = 100;
+const REARM_BELOW = 50;
+const STATE_ROW_ID = 1;
 
-// Hugis ng row sa Supabase table na "notification_state" (snake_case, kagaya ng SQL columns)
 type StateRow = {
   id: number;
   waste_status: WasteStatus;
   fill_level: number;
-  notification_status: NotificationStatus;
-  notification_sent_at: string | null; // ISO timestamp
+  notification_status: NotificationStatus | "EXPIRED";
+  notification_sent_at: string | null;
   acknowledged_at: string | null;
-  release_armed: boolean;
   released_at: string | null;
   released_by: ReleasedBy;
-  full_override_active: boolean;
+  reset_at: string | null;
+  release_armed: boolean | null;
+  full_override_active: boolean | null;
   actual_fill_level: number | null;
 };
 
-// Ang laman ng DTO na ipinapadala papunta sa dashboard (camelCase + derived na values)
-export type NotificationDto = {
-  wasteStatus: WasteStatus;
-  fillLevel: number;
-  notificationStatus: NotificationStatus;
-  notificationSentAt: number | null; // epoch ms, mas madaling gamitin sa frontend
-  acknowledgedAt: number | null;
-  releasedAt: number | null;
-  releasedBy: ReleasedBy;
-  remainingSeconds: number;
-  windowSeconds: number;
-};
+type ResolvedKind = "ACKNOWLEDGED" | "RELEASED";
 
 function toEpoch(iso: string | null): number | null {
   return iso ? new Date(iso).getTime() : null;
 }
 
+function currentStatus(row: StateRow): NotificationStatus {
+  return row.notification_status === "EXPIRED" ? "RELEASED" : row.notification_status;
+}
+
+function resetDeadline(row: StateRow): number | null {
+  const stored = toEpoch(row.reset_at);
+  if (stored !== null) return stored;
+  const base =
+    toEpoch(row.released_at) ?? toEpoch(row.acknowledged_at) ?? toEpoch(row.notification_sent_at);
+  return base === null ? null : base + RESET_DELAY_MS;
+}
+
 function toDto(row: StateRow): NotificationDto {
+  const now = Date.now();
+  const status = currentStatus(row);
   const sentAt = toEpoch(row.notification_sent_at);
-  // Tumatakbo lang ang countdown habang SENT (LIVE ALERT). Kapag acknowledged, released,
-  // o expired na — 0 na agad, para hindi na ito magpatuloy sa dashboard.
+  const resetAt = status === "ACKNOWLEDGED" || status === "RELEASED" ? resetDeadline(row) : null;
+
   const remainingMs =
-    row.notification_status === "SENT" && sentAt
-      ? Math.max(0, NOTIFICATION_WINDOW_MS - (Date.now() - sentAt))
-      : 0;
+    status === "SENT" && sentAt !== null ? Math.max(0, COUNTDOWN_MS - (now - sentAt)) : 0;
+  const resetRemainingMs = resetAt !== null ? Math.max(0, resetAt - now) : 0;
+
   return {
     wasteStatus: row.waste_status,
     fillLevel: row.fill_level,
-    notificationStatus: row.notification_status,
+    actualFillLevel: row.actual_fill_level,
+    notificationStatus: status,
     notificationSentAt: sentAt,
     acknowledgedAt: toEpoch(row.acknowledged_at),
-    releasedAt: toEpoch(row.released_at),
-    releasedBy: row.released_by,
+    releasedAt: status === "RELEASED" ? toEpoch(row.released_at) : null,
+    releasedBy: status === "RELEASED" ? row.released_by : null,
+    resetAt,
+    remainingMs,
     remainingSeconds: Math.ceil(remainingMs / 1000),
-    windowSeconds: NOTIFICATION_WINDOW_MS / 1000,
+    resetRemainingMs,
+    windowSeconds: COUNTDOWN_MS / 1000,
+    resetSeconds: RESET_DELAY_MS / 1000,
+    releaseArmed: row.release_armed === true,
+    fullOverrideActive: row.full_override_active === true,
+    serverTime: now,
   };
 }
 
-// Kunin ang kasalukuyang (iisang) row ng notification_state
 async function fetchRow(): Promise<StateRow> {
   const { data, error } = await supabaseAdmin
     .from("notification_state")
     .select("*")
     .eq("id", STATE_ROW_ID)
     .single();
+
   if (error || !data) {
-    throw new Error(`[notification-store] Failed to read state: ${error?.message ?? "no data"}`);
+    throw new Error(`[notification-store] Read failed: ${error?.message ?? "no data"}`);
   }
   return data as StateRow;
 }
 
-// I-update lang ang mga field na binago (partial), ibalik ang buong updated row
 async function saveRow(patch: Partial<StateRow>): Promise<StateRow> {
   const { data, error } = await supabaseAdmin
     .from("notification_state")
@@ -106,285 +98,245 @@ async function saveRow(patch: Partial<StateRow>): Promise<StateRow> {
     .eq("id", STATE_ROW_ID)
     .select()
     .single();
+
   if (error || !data) {
-    throw new Error(`[notification-store] Failed to update state: ${error?.message ?? "no data"}`);
+    throw new Error(`[notification-store] Update failed: ${error?.message ?? "no data"}`);
   }
   return data as StateRow;
 }
 
-// Conditional update: gagana lang kung pasok pa rin ang row sa `guard` (hal. status ay SENT pa).
-// Ito ang pumipigil na magka-DOUBLE ang history log kapag sabay ang dalawang request
-// (hal. double-click sa button, o dalawang tabs/poll na sabay nag-expire ng notification).
-// Ibinabalik ang updated row, o null kung may naunang request na nag-update na.
-async function updateIf(
-  patch: Partial<StateRow>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  guard: (query: any) => any,
-): Promise<StateRow | null> {
-  const base = supabaseAdmin.from("notification_state").update(patch).eq("id", STATE_ROW_ID);
-  const { data, error } = await guard(base).select().maybeSingle();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Guard = (query: any) => any;
+
+async function updateIf(patch: Partial<StateRow>, guard: Guard): Promise<StateRow | null> {
+  const query = supabaseAdmin.from("notification_state").update(patch).eq("id", STATE_ROW_ID);
+  const { data, error } = await guard(query).select().maybeSingle();
+
   if (error) {
-    throw new Error(`[notification-store] Failed to update state: ${error.message}`);
+    throw new Error(`[notification-store] Conditional update failed: ${error.message}`);
   }
   return (data as StateRow | null) ?? null;
 }
 
-// I-log ang buong lifecycle ng isang notification papunta sa history table (audit trail) —
-// tinatawag lang tuwing na-resolve na ang isang cycle (acknowledged, released, o auto-released)
-async function logHistory(row: StateRow) {
+async function logHistory(row: StateRow, kind: ResolvedKind): Promise<void> {
   const { error } = await supabaseAdmin.from("notification_history").insert({
     notification_sent_at: row.notification_sent_at,
     acknowledged_at: row.acknowledged_at,
     released_at: row.released_at,
     released_by: row.released_by,
     fill_level: row.fill_level,
+    status: kind,
+    reset_at: row.reset_at,
   });
+
   if (error) {
-    // Hindi natin gustong mag-fail ang buong request dahil lang sa history log —
-    // i-log na lang sa console para may makitang paalala kung may mali sa setup
-    // eslint-disable-next-line no-console
-    console.error("[notification-store] Failed to log history:", error.message);
+    console.error("[notification-store] History insert failed:", error.message);
   }
 }
 
-// Tinitingnan tuwing may bumabasa/nagsusulat ng state: kung SENT pa rin pero lampas na sa
-// 5 minuto na walang acknowledge/release, kusang mag-a-auto-release (Released Automatically).
-// Hindi na ito nakadepende sa fill level — kapag SENT na ang notification, tuloy ang cycle
-// hanggang ma-resolve.
-async function applyExpiry(row: StateRow): Promise<StateRow> {
+async function autoReleaseIfExpired(row: StateRow): Promise<StateRow> {
   const sentAt = toEpoch(row.notification_sent_at);
-
-  if (
-    row.notification_status === "SENT" &&
-    sentAt !== null &&
-    Date.now() - sentAt >= NOTIFICATION_WINDOW_MS
-  ) {
-    const updated = await updateIf(
-      {
-        notification_status: "EXPIRED",
-        released_at: new Date().toISOString(),
-        released_by: "auto",
-        release_armed: false,
-      },
-      (q) => q.eq("notification_status", "SENT"),
-    );
-
-    // Null = may ibang request na nag-expire/nag-resolve na nito; kunin lang ang pinakabago
-    if (!updated) return fetchRow();
-
-    await logHistory(updated);
-    return updated;
+  if (currentStatus(row) !== "SENT" || sentAt === null || Date.now() - sentAt < COUNTDOWN_MS) {
+    return row;
   }
 
-  return row;
+  const now = Date.now();
+  const updated = await updateIf(
+    {
+      notification_status: "RELEASED",
+      released_at: new Date(now).toISOString(),
+      released_by: "auto",
+      reset_at: new Date(now + RESET_DELAY_MS).toISOString(),
+    },
+    (q) =>
+      q
+        .eq("notification_status", "SENT")
+        .lte("notification_sent_at", new Date(now - COUNTDOWN_MS).toISOString()),
+  );
+
+  if (!updated) return fetchRow();
+  await logHistory(updated, "RELEASED");
+  return updated;
 }
 
-// GET /api/notification — kasalukuyang estado, pinapabasa ng dashboard paminsan-minsan
-export async function getNotificationState(): Promise<NotificationDto> {
-  const row = await applyExpiry(await fetchRow());
-  return toDto(row);
-}
+async function resetIfDue(row: StateRow): Promise<StateRow> {
+  const status = currentStatus(row);
+  if (status !== "ACKNOWLEDGED" && status !== "RELEASED") return row;
 
-// Tinatawag tuwing may bagong reading ang ultrasonic sensor (o ang "Simulate" buttons sa
-// dashboard habang wala pang totoong hardware). "One FULL event = one notification only".
-export async function reportSensorReading(fillLevel: number): Promise<NotificationDto> {
-  const current = await applyExpiry(await fetchRow());
-
-  // Huwag tanggapin ang sirang reading (NaN, undefined, atbp.)
-  if (!Number.isFinite(fillLevel)) return toDto(current);
-
-  const clamped = Math.max(0, Math.min(100, Math.round(fillLevel)));
-    if (current.full_override_active) {
-      const { error } = await supabaseAdmin
-        .from("notification_state")
-        .update({
-          actual_fill_level: clamped,
-        })
-        .eq("id", STATE_ROW_ID);
-
-      if (error) {
-        throw new Error(
-          `[notification-store] Failed to save actual reading: ${error.message}`,
-        );
-      }
-
-      return toDto(current);
-    }
-
-  const nextStatus: WasteStatus = clamped >= FULL_THRESHOLD ? "FULL" : "NOT_FULL";
-
-  const basePatch: Partial<StateRow> = {
-    fill_level: clamped,
-    actual_fill_level: clamped,
-    waste_status: nextStatus,
-  };
-
-  // BUMABA SA IBABA NG 50% -> RESET ang buong cycle (clear ang Released/Acknowledged,
-  // ready na ulit para sa panibagong cycle)
-  if (clamped < RELEASE_THRESHOLD) {
-    return toDto(
-      await saveRow({
-        ...basePatch,
-        notification_status: "NOT_SENT",
-        notification_sent_at: null,
-        acknowledged_at: null,
-        released_at: null,
-        released_by: null,
-        release_armed: true,
-      }),
-    );
-  }
-
-  // 100% AT WALA PANG NOTIFICATION SA CYCLE NA ITO -> magpadala ng bago (LIVE ALERT)
-  if (clamped >= FULL_THRESHOLD && current.notification_status === "NOT_SENT") {
-    const updated = await updateIf(
-      {
-        ...basePatch,
-        notification_status: "SENT",
-        notification_sent_at: new Date().toISOString(),
-        // Linisin ang anumang naunang manual release (hal. na-release sa 70% pero tumaas ulit
-        // sa 100%) para hindi agad "Released" ang bagong alert
-        acknowledged_at: null,
-        released_at: null,
-        released_by: null,
-        release_armed: true,
-      },
-      (q) => q.eq("notification_status", "NOT_SENT"),
-    );
-    if (updated) return toDto(updated);
-    // Kung null: may kasabay na reading na nakapagpadala na ng notification — fill level lang ang i-update
-  }
-
-  // 50–99% (o 100% na may aktibo/na-resolve nang notification): fill level lang ang gumagalaw.
-  // "FULL pa rin" ay hindi nagpapadala ng bagong notification.
-  return toDto(await saveRow(basePatch));
-}
-
-// Pinipindot ng barangay official: "nakita ko na, may pupuntang tao" — hihinto ang countdown
-// at hindi na magpapadala ulit ng notification habang FULL pa rin. Release Now pa rin ang
-// kailangan para sa totoong release.
-export async function acknowledgeNotification(): Promise<NotificationDto> {
-  const current = await applyExpiry(await fetchRow());
-
-  // Puwede lang mag-acknowledge habang LIVE ALERT (SENT) pa
-  if (current.notification_status !== "SENT") return toDto(current);
+  const deadline = resetDeadline(row);
+  if (deadline === null || Date.now() < deadline) return row;
 
   const updated = await updateIf(
     {
+      notification_status: "NOT_SENT",
+      notification_sent_at: null,
+      acknowledged_at: null,
+      released_at: null,
+      released_by: null,
+      reset_at: null,
+      release_armed: row.fill_level < REARM_BELOW,
+      waste_status: row.fill_level >= FULL_LEVEL ? "FULL" : "NOT_FULL",
+    },
+    (q) => q.in("notification_status", ["ACKNOWLEDGED", "RELEASED", "EXPIRED"]),
+  );
+
+  return updated ?? fetchRow();
+}
+
+async function loadCurrent(): Promise<StateRow> {
+  let row = await fetchRow();
+  row = await autoReleaseIfExpired(row);
+  row = await resetIfDue(row);
+  return row;
+}
+
+function validLevel(level: number): number {
+  if (!Number.isFinite(level) || level < 0 || level > 100) {
+    throw new Error("Fill level must be a number from 0 to 100.");
+  }
+  return Math.round(level);
+}
+
+async function applyEffectiveLevel(
+  row: StateRow,
+  level: number,
+  extra: Partial<StateRow> = {},
+): Promise<StateRow> {
+  const base: Partial<StateRow> = {
+    ...extra,
+    fill_level: level,
+    waste_status: level >= FULL_LEVEL ? "FULL" : "NOT_FULL",
+  };
+
+  if (currentStatus(row) !== "NOT_SENT") {
+    return saveRow(base);
+  }
+
+  if (level < REARM_BELOW) {
+    return saveRow({ ...base, release_armed: true });
+  }
+
+  if (level >= FULL_LEVEL && row.release_armed === true) {
+    const started = await updateIf(
+      {
+        ...base,
+        notification_status: "SENT",
+        notification_sent_at: new Date(Date.now()).toISOString(),
+        acknowledged_at: null,
+        released_at: null,
+        released_by: null,
+        reset_at: null,
+        release_armed: false,
+      },
+      (q) => q.eq("notification_status", "NOT_SENT").eq("release_armed", true),
+    );
+    if (started) return started;
+    return fetchRow();
+  }
+
+  return saveRow(base);
+}
+
+export async function getNotificationState(): Promise<NotificationDto> {
+  return toDto(await loadCurrent());
+}
+
+export async function reportSensorReading(fillLevel: number): Promise<NotificationDto> {
+  const level = validLevel(fillLevel);
+  const row = await loadCurrent();
+
+  if (row.full_override_active === true) {
+    const updated = await saveRow({ actual_fill_level: level });
+    return toDto(updated);
+  }
+
+  return toDto(await applyEffectiveLevel(row, level, { actual_fill_level: level }));
+}
+
+export async function setSimulatedFillLevel(fillLevel: number): Promise<NotificationDto> {
+  const level = validLevel(fillLevel);
+  const row = await loadCurrent();
+
+  if (row.full_override_active !== true) {
+    throw new BypassRequiredError();
+  }
+
+  return toDto(await applyEffectiveLevel(row, level));
+}
+
+export async function setBypassEnabled(enabled: boolean): Promise<NotificationDto> {
+  const row = await loadCurrent();
+  if ((row.full_override_active === true) === enabled) return toDto(row);
+
+  if (enabled) {
+    const updated = await updateIf(
+      {
+        full_override_active: true,
+        actual_fill_level: row.actual_fill_level ?? row.fill_level,
+      },
+      (q) => q.or("full_override_active.is.null,full_override_active.eq.false"),
+    );
+    return toDto(updated ?? (await fetchRow()));
+  }
+
+  const switched = await updateIf({ full_override_active: false }, (q) =>
+    q.eq("full_override_active", true),
+  );
+  if (!switched) return toDto(await fetchRow());
+
+  const actual = switched.actual_fill_level;
+  if (actual === null || actual === undefined) return toDto(switched);
+  return toDto(await applyEffectiveLevel(switched, actual));
+}
+
+export async function isBypassActive(): Promise<boolean> {
+  const row = await fetchRow();
+  return row.full_override_active === true;
+}
+
+export class BypassRequiredError extends Error {
+  constructor() {
+    super("Turn Bypass Mode ON first.");
+  }
+}
+
+export type TransitionResult = { performed: boolean; state: NotificationDto };
+
+export async function acknowledgeNotification(): Promise<TransitionResult> {
+  const row = await loadCurrent();
+  if (currentStatus(row) !== "SENT") return { performed: false, state: toDto(row) };
+
+  const now = Date.now();
+  const updated = await updateIf(
+    {
       notification_status: "ACKNOWLEDGED",
-      acknowledged_at: new Date().toISOString(),
+      acknowledged_at: new Date(now).toISOString(),
+      reset_at: new Date(now + RESET_DELAY_MS).toISOString(),
     },
     (q) => q.eq("notification_status", "SENT"),
   );
 
-  // Null = may naunang request (hal. double-click o auto-release) — ibalik na lang ang kasalukuyan
-  if (!updated) return toDto(await fetchRow());
-
-  await logHistory(updated);
-  return toDto(updated);
+  if (!updated) return { performed: false, state: toDto(await fetchRow()) };
+  await logHistory(updated, "ACKNOWLEDGED");
+  return { performed: true, state: toDto(updated) };
 }
 
-// "Release Now" — puwede mula 50% pataas (kasama ang 50–99% na walang notification, at
-// 100% na SENT o ACKNOWLEDGED). Isang beses lang bawat cycle: kapag released na, hindi na
-// ito mauulit hanggang bumaba ulit sa ibaba ng 50%.
-export async function releaseNotification(): Promise<NotificationDto> {
-  const current = await applyExpiry(await fetchRow());
+export async function releaseNotification(): Promise<TransitionResult> {
+  const row = await loadCurrent();
+  if (currentStatus(row) !== "SENT") return { performed: false, state: toDto(row) };
 
-  // Walang Release sa 0–49%, at bawal ang ikalawang release sa parehong cycle
-  if (current.fill_level < RELEASE_THRESHOLD || current.released_at !== null) {
-    return toDto(current);
-  }
-
-  const patch: Partial<StateRow> = {
-    released_at: new Date().toISOString(),
-    released_by: "manual",
-    release_armed: false,
-  };
-
-  // Kung may aktibong alert (LIVE o Acknowledged), tapos na ito — hihinto ang countdown
-  if (
-    current.notification_status === "SENT" ||
-    current.notification_status === "ACKNOWLEDGED"
-  ) {
-    patch.notification_status = "EXPIRED";
-  }
-
-  const updated = await updateIf(patch, (q) => q.is("released_at", null));
-  if (!updated) return toDto(await fetchRow()); // may naunang release na
-
-  await logHistory(updated);
-  return toDto(updated);
-}
-
-// LEGACY: wala nang actuator control sa website — ang arduino_controller.py na ang may hawak
-// ng actuator command. Iniwan lang ang function na ito para hindi mag-break ang anumang route
-// na nag-i-import pa rin nito; walang binabago sa estado. Puwede mo na itong burahin kasama
-// ng route na tumatawag dito.
-export async function completeRelease(): Promise<NotificationDto> {
-  return toDto(await fetchRow());
-}
-
-export async function activateFullOverride(): Promise<NotificationDto> {
-  const current = await applyExpiry(await fetchRow());
-
-  if (current.full_override_active) {
-    return toDto(current);
-  }
-
-  if (
-    current.notification_status !== "NOT_SENT" ||
-    current.released_at !== null
-  ) {
-    throw new Error("The previous notification cycle is not ready.");
-  }
-
+  const now = Date.now();
   const updated = await updateIf(
     {
-      full_override_active: true,
-      actual_fill_level:
-        current.actual_fill_level ?? current.fill_level,
-      fill_level: 100,
-      waste_status: "FULL",
-      notification_status: "SENT",
-      notification_sent_at: new Date().toISOString(),
-      acknowledged_at: null,
-      released_at: null,
-      released_by: null,
-      release_armed: true,
+      notification_status: "RELEASED",
+      released_at: new Date(now).toISOString(),
+      released_by: "manual",
+      reset_at: new Date(now + RESET_DELAY_MS).toISOString(),
     },
-    (q) =>
-      q.eq("notification_status", "NOT_SENT")
-        .eq("full_override_active", false)
-        .is("released_at", null),
+    (q) => q.eq("notification_status", "SENT"),
   );
 
-  if (!updated) {
-    throw new Error("FULL activation was not accepted.");
-  }
-
-  return toDto(updated);
+  if (!updated) return { performed: false, state: toDto(await fetchRow()) };
+  await logHistory(updated, "RELEASED");
+  return { performed: true, state: toDto(updated) };
 }
-
-
-
-export async function clearFullOverride(): Promise<NotificationDto> {
-  const current = await applyExpiry(await fetchRow());
-
-  if (!current.full_override_active) {
-    return toDto(current);
-  }
-
-  const actual = current.actual_fill_level ?? 0;
-
-  const updated = await updateIf(
-    {
-      full_override_active: false,
-      fill_level: actual,
-      waste_status: actual >= FULL_THRESHOLD ? "FULL" : "NOT_FULL",
-    },
-    (q) => q.eq("full_override_active", true),
-  );
-
-  return toDto(updated ?? await fetchRow());
-}
-

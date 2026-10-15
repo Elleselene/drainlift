@@ -21,11 +21,8 @@ import { Route as ApiNotificationRouteImport } from './routes/api/notification'
 import { Route as ApiNotificationAcknowledgeRouteImport } from './routes/api/notification-acknowledge'
 import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notification-history'
 import { Route as ApiNotificationReleaseRouteImport } from './routes/api/notification-release'
-import { Route as ApiReleaseCompleteRouteImport } from './routes/api/release-complete'
 import { Route as ApiSensorReadingRouteImport } from './routes/api/sensor-reading'
 import { Route as ApiUserRoleRouteImport } from './routes/api/user-role'
-import { Route as ApiFullOverrideActivateRouteImport } from './routes/api/full-override/activate'
-import { Route as ApiFullOverrideClearRouteImport } from './routes/api/full-override/clear'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -88,11 +85,6 @@ const ApiNotificationReleaseRoute = ApiNotificationReleaseRouteImport.update({
   path: '/api/notification-release',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiReleaseCompleteRoute = ApiReleaseCompleteRouteImport.update({
-  id: '/api/release-complete',
-  path: '/api/release-complete',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiSensorReadingRoute = ApiSensorReadingRouteImport.update({
   id: '/api/sensor-reading',
   path: '/api/sensor-reading',
@@ -101,16 +93,6 @@ const ApiSensorReadingRoute = ApiSensorReadingRouteImport.update({
 const ApiUserRoleRoute = ApiUserRoleRouteImport.update({
   id: '/api/user-role',
   path: '/api/user-role',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiFullOverrideActivateRoute = ApiFullOverrideActivateRouteImport.update({
-  id: '/api/full-override/activate',
-  path: '/api/full-override/activate',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiFullOverrideClearRoute = ApiFullOverrideClearRouteImport.update({
-  id: '/api/full-override/clear',
-  path: '/api/full-override/clear',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -127,11 +109,8 @@ export interface FileRoutesByFullPath {
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
   '/api/notification-release': typeof ApiNotificationReleaseRoute
-  '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
   '/api/user-role': typeof ApiUserRoleRoute
-  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
-  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -146,11 +125,8 @@ export interface FileRoutesByTo {
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
   '/api/notification-release': typeof ApiNotificationReleaseRoute
-  '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
   '/api/user-role': typeof ApiUserRoleRoute
-  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
-  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -166,11 +142,8 @@ export interface FileRoutesById {
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
   '/api/notification-release': typeof ApiNotificationReleaseRoute
-  '/api/release-complete': typeof ApiReleaseCompleteRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
   '/api/user-role': typeof ApiUserRoleRoute
-  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
-  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -187,11 +160,8 @@ export interface FileRouteTypes {
     | '/api/notification-acknowledge'
     | '/api/notification-history'
     | '/api/notification-release'
-    | '/api/release-complete'
     | '/api/sensor-reading'
     | '/api/user-role'
-    | '/api/full-override/activate'
-    | '/api/full-override/clear'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -206,11 +176,8 @@ export interface FileRouteTypes {
     | '/api/notification-acknowledge'
     | '/api/notification-history'
     | '/api/notification-release'
-    | '/api/release-complete'
     | '/api/sensor-reading'
     | '/api/user-role'
-    | '/api/full-override/activate'
-    | '/api/full-override/clear'
   id:
     | '__root__'
     | '/'
@@ -225,11 +192,8 @@ export interface FileRouteTypes {
     | '/api/notification-acknowledge'
     | '/api/notification-history'
     | '/api/notification-release'
-    | '/api/release-complete'
     | '/api/sensor-reading'
     | '/api/user-role'
-    | '/api/full-override/activate'
-    | '/api/full-override/clear'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -245,11 +209,8 @@ export interface RootRouteChildren {
   ApiNotificationAcknowledgeRoute: typeof ApiNotificationAcknowledgeRoute
   ApiNotificationHistoryRoute: typeof ApiNotificationHistoryRoute
   ApiNotificationReleaseRoute: typeof ApiNotificationReleaseRoute
-  ApiReleaseCompleteRoute: typeof ApiReleaseCompleteRoute
   ApiSensorReadingRoute: typeof ApiSensorReadingRoute
   ApiUserRoleRoute: typeof ApiUserRoleRoute
-  ApiFullOverrideActivateRoute: typeof ApiFullOverrideActivateRoute
-  ApiFullOverrideClearRoute: typeof ApiFullOverrideClearRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -338,13 +299,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNotificationReleaseRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/release-complete': {
-      id: '/api/release-complete'
-      path: '/api/release-complete'
-      fullPath: '/api/release-complete'
-      preLoaderRoute: typeof ApiReleaseCompleteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/sensor-reading': {
       id: '/api/sensor-reading'
       path: '/api/sensor-reading'
@@ -357,20 +311,6 @@ declare module '@tanstack/react-router' {
       path: '/api/user-role'
       fullPath: '/api/user-role'
       preLoaderRoute: typeof ApiUserRoleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/full-override/activate': {
-      id: '/api/full-override/activate'
-      path: '/api/full-override/activate'
-      fullPath: '/api/full-override/activate'
-      preLoaderRoute: typeof ApiFullOverrideActivateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/full-override/clear': {
-      id: '/api/full-override/clear'
-      path: '/api/full-override/clear'
-      fullPath: '/api/full-override/clear'
-      preLoaderRoute: typeof ApiFullOverrideClearRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -389,11 +329,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationAcknowledgeRoute: ApiNotificationAcknowledgeRoute,
   ApiNotificationHistoryRoute: ApiNotificationHistoryRoute,
   ApiNotificationReleaseRoute: ApiNotificationReleaseRoute,
-  ApiReleaseCompleteRoute: ApiReleaseCompleteRoute,
   ApiSensorReadingRoute: ApiSensorReadingRoute,
   ApiUserRoleRoute: ApiUserRoleRoute,
-  ApiFullOverrideActivateRoute: ApiFullOverrideActivateRoute,
-  ApiFullOverrideClearRoute: ApiFullOverrideClearRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
