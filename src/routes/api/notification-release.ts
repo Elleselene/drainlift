@@ -11,7 +11,8 @@ export const Route = createFileRoute("/api/notification-release")({
           return Response.json({ error: "Login required" }, { status: 403 });
         }
         try {
-          return Response.json(await releaseNotification());
+          const { performed, state } = await releaseNotification();
+          return Response.json({ ok: performed, state });
         } catch (error) {
           console.error("[notification-release]", error);
           return Response.json({ error: "Unable to update notification" }, { status: 500 });

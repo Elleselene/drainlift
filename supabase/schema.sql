@@ -102,3 +102,16 @@ drop policy if exists "Authenticated users can read notification history" on pub
 create policy "Authenticated users can read notification history"
   on public.notification_history for select
   using (auth.role() = 'authenticated');
+
+-- =========================================================
+-- 5. SIMPLIFIED NOTIFICATION / RELEASE (see supabase/migrations)
+-- =========================================================
+alter table public.notification_state
+  add column if not exists release_armed boolean not null default true,
+  add column if not exists full_override_active boolean not null default false,
+  add column if not exists actual_fill_level int,
+  add column if not exists reset_at timestamptz;
+
+alter table public.notification_history
+  add column if not exists status text,
+  add column if not exists reset_at timestamptz;

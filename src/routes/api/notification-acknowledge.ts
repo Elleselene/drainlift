@@ -11,7 +11,8 @@ export const Route = createFileRoute("/api/notification-acknowledge")({
           return Response.json({ error: "Login required" }, { status: 403 });
         }
         try {
-          return Response.json(await acknowledgeNotification());
+          const { performed, state } = await acknowledgeNotification();
+          return Response.json({ ok: performed, state });
         } catch (error) {
           console.error("[notification-acknowledge]", error);
           return Response.json({ error: "Unable to update notification" }, { status: 500 });

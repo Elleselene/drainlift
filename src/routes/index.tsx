@@ -24,6 +24,7 @@ import {
 import { device } from "@/lib/drainlift";
 import { supabase } from "@/lib/supabase-client";
 import { useAppState } from "@/lib/app-state";
+import type { NotificationDto } from "@/lib/notification-types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -56,25 +57,16 @@ type HistoryRow = {
   status: "acknowledged" | "auto-released" | "released";
 };
 
-type NotificationDto = {
-  wasteStatus: "FULL" | "NOT_FULL";
-  fillLevel: number;
-  notificationStatus: "NOT_SENT" | "SENT" | "ACKNOWLEDGED" | "EXPIRED";
-  notificationSentAt: number | null;
-  acknowledgedAt: number | null;
-  releasedAt: number | null;
-  releasedBy: "manual" | "auto" | null;
-  remainingSeconds: number;
-  windowSeconds: number;
-  actuatorActive: boolean;
-  releaseArmed: boolean;
-  fullOverrideActive: boolean;
-  hardwareSystemActive: boolean | null;
-  hardwareOnline: boolean;
-};
+type TransitionResponse = { ok: boolean; state: NotificationDto };
+
+function formatClock(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.ceil(totalSeconds));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
 
 function useNotificationHistoryPreview() {
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
+
   const refreshHistory = useCallback(async () => {
     try {
       const response = await fetch("/api/notification-history", { cache: "no-store" });
@@ -82,7 +74,7 @@ function useNotificationHistoryPreview() {
       const data = await response.json();
       setRows(Array.isArray(data.rows) ? data.rows.slice(0, 5) : []);
     } catch {
-      // Keep the most recent successfully loaded history.
+      return;
     }
   }, []);
 
@@ -97,22 +89,30 @@ function useNotificationHistoryPreview() {
 
 function useNotification() {
   const [dto, setDto] = useState<NotificationDto | null>(null);
-  const [displaySeconds, setDisplaySeconds] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [pending, setPending] = useState(false);
+  const receivedAt = useRef(0);
+  const sequence = useRef(0);
   const requestInProgress = useRef(false);
+  const expiryRefreshKey = useRef<string | null>(null);
 
   const applyDto = useCallback((next: NotificationDto) => {
+    receivedAt.current = Date.now();
     setDto(next);
-    setDisplaySeconds(next.remainingSeconds);
+    setNow(receivedAt.current);
+    setLoadFailed(false);
   }, []);
 
   const refresh = useCallback(async () => {
+    const id = ++sequence.current;
     try {
       const response = await fetch("/api/notification", { cache: "no-store" });
-      if (!response.ok) return;
-      applyDto((await response.json()) as NotificationDto);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const next = (await response.json()) as NotificationDto;
+      if (id === sequence.current) applyDto(next);
     } catch {
-      // Try again on the next poll.
+      if (id === sequence.current) setLoadFailed(true);
     }
   }, [applyDto]);
 
@@ -122,114 +122,144 @@ function useNotification() {
     return () => clearInterval(id);
   }, [refresh]);
 
+  const status = dto?.notificationStatus;
+
   useEffect(() => {
-    if (dto?.notificationStatus !== "SENT") return;
-    const id = setInterval(() => {
-      setDisplaySeconds((seconds) => Math.max(0, seconds - 1));
-    }, 1000);
+    if (status !== "SENT" && status !== "ACKNOWLEDGED" && status !== "RELEASED") return;
+    const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [dto?.notificationStatus, dto?.notificationSentAt]);
+  }, [status]);
+
+  const elapsed = dto ? Math.max(0, now - receivedAt.current) : 0;
+  const remainingMs = dto ? Math.max(0, dto.remainingMs - elapsed) : 0;
+  const resetRemainingMs = dto ? Math.max(0, dto.resetRemainingMs - elapsed) : 0;
+
+  useEffect(() => {
+    if (!dto) return;
+    const due =
+      (dto.notificationStatus === "SENT" && remainingMs === 0) ||
+      ((dto.notificationStatus === "ACKNOWLEDGED" || dto.notificationStatus === "RELEASED") &&
+        resetRemainingMs === 0);
+    if (!due) return;
+    const key = `${dto.notificationStatus}:${dto.notificationSentAt}`;
+    if (expiryRefreshKey.current === key) return;
+    expiryRefreshKey.current = key;
+    const id = setTimeout(() => void refresh(), 400);
+    return () => clearTimeout(id);
+  }, [dto, remainingMs, resetRemainingMs, refresh]);
 
   const post = useCallback(
-    async (url: string): Promise<boolean> => {
-      if (requestInProgress.current) return false;
+    async (url: string): Promise<TransitionResponse | null> => {
+      if (requestInProgress.current) return null;
       requestInProgress.current = true;
       setPending(true);
+      sequence.current += 1;
       try {
         const { data, error } = await supabase.auth.getSession();
         const token = data.session?.access_token;
         if (error || !token) {
           toast.error("Please log in again.");
-          return false;
+          return null;
         }
-
         const response = await fetch(url, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
-
         if (!response.ok) {
           toast.error(
-            response.status === 403
-              ? "Admin access required."
-              : "Unable to complete the request.",
+            response.status === 403 ? "Login required." : "Unable to complete the request.",
           );
-          return false;
+          return null;
         }
-
-        applyDto((await response.json()) as NotificationDto);
-        await refresh();
-        return true;
+        const result = (await response.json()) as TransitionResponse;
+        sequence.current += 1;
+        applyDto(result.state);
+        return result;
       } catch (error) {
         console.error(error);
         toast.error("Unable to connect to the server.");
-        return false;
+        return null;
       } finally {
         requestInProgress.current = false;
         setPending(false);
       }
     },
-    [applyDto, refresh],
+    [applyDto],
   );
 
   return {
     dto,
-    displaySeconds,
+    loadFailed,
+    remainingMs,
+    resetRemainingMs,
     pending,
-    refresh,
     acknowledge: () => post("/api/notification-acknowledge"),
     release: () => post("/api/notification-release"),
   };
 }
 
 function Dashboard() {
-  const { dto, displaySeconds, pending, acknowledge, release } = useNotification();
+  const { dto, loadFailed, remainingMs, resetRemainingMs, pending, acknowledge, release } =
+    useNotification();
   const { rows: historyRows, refreshHistory } = useNotificationHistoryPreview();
   const { userRole, roleLoading } = useAppState();
+
   const isAuthenticated = !roleLoading && (userRole === "admin" || userRole === "user");
-  const isLoading = dto === null;
-  const isReleased = dto?.releasedAt != null;
+  const status = dto?.notificationStatus ?? "NOT_SENT";
   const isAutoReleased = dto?.releasedBy === "auto";
-  const isLiveAlert = dto?.fillLevel === 100 && dto.notificationStatus === "SENT";
-  const showAcknowledgeButton = isAuthenticated && isLiveAlert;
-  const showReleaseButton =
-    isAuthenticated &&
-    dto?.fillLevel === 100 &&
-    !isReleased &&
-    (!dto.hardwareOnline || dto.hardwareSystemActive === false ||
-      dto.notificationStatus === "SENT" ||
-      dto.notificationStatus === "ACKNOWLEDGED");
+  const showAlertCard = dto !== null && status !== "NOT_SENT";
+  const canAct = isAuthenticated && status === "SENT" && !pending;
 
   async function handleAcknowledge() {
-    if (await acknowledge()) {
-      toast.success("Acknowledged", {
-        description: "The countdown has stopped.",
-      });
-      await refreshHistory();
+    const result = await acknowledge();
+    if (!result) return;
+    if (result.ok) {
+      toast.success("Acknowledged", { description: "The countdown has stopped." });
+    } else {
+      toast.info("This alert was already resolved.");
     }
+    await refreshHistory();
   }
 
   async function handleRelease() {
-    if (await release()) {
-      toast.success("Request Processed", {
-        description: "If the device is offline or stopped, the request is cancelled. Otherwise, the website returns to normal after 2 minutes.",
+    const result = await release();
+    if (!result) return;
+    if (result.ok) {
+      toast.success("Release Requested", {
+        description: "The release command was sent to the Raspberry Pi.",
       });
-      await refreshHistory();
+    } else {
+      toast.info("This alert was already resolved.");
     }
+    await refreshHistory();
   }
 
   const lastAutoRelease = useRef<number | null>(null);
+
   useEffect(() => {
     if (dto?.releasedBy !== "auto" || dto.releasedAt === null) return;
     if (lastAutoRelease.current === dto.releasedAt) return;
     lastAutoRelease.current = dto.releasedAt;
     toast.info("Automatic Release Requested", {
-      description: "The countdown expired and a release request was recorded.",
+      description: "The countdown expired and a release command was sent.",
     });
-  }, [dto?.releasedBy, dto?.releasedAt]);
+    void refreshHistory();
+  }, [dto?.releasedBy, dto?.releasedAt, refreshHistory]);
 
-  const countdown = `${String(Math.floor(displaySeconds / 60)).padStart(2, "0")}:${String(displaySeconds % 60).padStart(2, "0")}`;
-  const showAlertCard = dto?.fillLevel === 100 && dto.notificationStatus !== "NOT_SENT" && dto.hardwareOnline && dto.hardwareSystemActive === true;
+  let countdown = "--:--";
+  if (dto) {
+    const windowMs = dto.windowSeconds * 1000;
+    if (status === "SENT") {
+      countdown = formatClock(remainingMs / 1000);
+    } else if (status === "ACKNOWLEDGED" && dto.notificationSentAt && dto.acknowledgedAt) {
+      countdown = formatClock((windowMs - (dto.acknowledgedAt - dto.notificationSentAt)) / 1000);
+    } else if (status === "RELEASED") {
+      countdown =
+        isAutoReleased || !dto.notificationSentAt || !dto.releasedAt
+          ? formatClock(0)
+          : formatClock((windowMs - (dto.releasedAt - dto.notificationSentAt)) / 1000);
+    }
+  }
 
   return (
     <AppShell
@@ -237,14 +267,18 @@ function Dashboard() {
       subtitle="Waste Compartment Monitoring — Real-time Alerts"
       actions={
         <StatusPill tone="primary" className="hidden sm:inline-flex">
-          {dto?.hardwareOnline ? (dto.hardwareSystemActive ? "System Online" : "System Stopped") : "System Offline"}
+          {dto?.fullOverrideActive ? "Bypass Mode" : "Live Monitoring"}
         </StatusPill>
       }
     >
       <div className="space-y-5">
-        {isLoading ? (
+        {dto === null ? (
           <Card className="border-border p-4 sm:p-5">
-            <p className="text-sm text-muted-foreground">Loading current status…</p>
+            <p className="text-sm text-muted-foreground">
+              {loadFailed
+                ? "Unable to reach the server. Retrying…"
+                : "Loading current status…"}
+            </p>
           </Card>
         ) : !showAlertCard ? (
           <Card className="border-primary/40 p-4 sm:p-5">
@@ -255,23 +289,14 @@ function Dashboard() {
               <div className="min-w-0">
                 <StatusPill tone="primary">All Clear</StatusPill>
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                  Waste Compartment — {dto.fillLevel === 100 ? "Monitoring" : "Not Full"}
+                  Waste Compartment — {dto.fillLevel >= 100 ? "Monitoring" : "Not Full"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
-                  Monitoring the waste compartment fill level.
+                  {dto.fillLevel >= 100 && !dto.releaseArmed
+                    ? "A new alert starts after the fill level drops below 50%."
+                    : "Monitoring the waste compartment fill level."}
                 </p>
-                {(!dto.hardwareOnline || dto.hardwareSystemActive === false) && showReleaseButton && (
-                  <div className="mt-3">
-                    <Button variant="danger" onClick={handleRelease} disabled={pending}>
-                      <Zap className="h-4 w-4" />
-                      Release Now
-                    </Button>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      System stopped/offline — no new release command will be queued.
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           </Card>
@@ -282,64 +307,59 @@ function Dashboard() {
                 <AlertTriangle className="h-7 w-7" />
               </span>
               <div className="min-w-0">
-                {dto.notificationStatus === "SENT" && (
-                  <StatusPill tone="danger">Live Alert</StatusPill>
-                )}
-                {dto.notificationStatus === "ACKNOWLEDGED" && (
-                  <StatusPill tone="primary">Acknowledged</StatusPill>
-                )}
-                {isReleased && (
+                {status === "SENT" && <StatusPill tone="danger">Live Alert</StatusPill>}
+                {status === "ACKNOWLEDGED" && <StatusPill tone="primary">Acknowledged</StatusPill>}
+                {status === "RELEASED" && (
                   <StatusPill tone="warning">
-                    {isAutoReleased ? "Auto-Release Requested" : "Release Requested"}
+                    {isAutoReleased ? "Released Automatically" : "Released"}
                   </StatusPill>
                 )}
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
                   DrainLift Unit – Waste Full
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {dto.notificationStatus === "SENT" &&
+                  {status === "SENT" &&
                     "The waste compartment has reached maximum capacity. Immediate collection is required."}
-                  {dto.notificationStatus === "ACKNOWLEDGED" &&
-                    "The alert has been acknowledged. Automatic release has been cancelled for this alert."}
-                  {isReleased &&
+                  {status === "ACKNOWLEDGED" &&
+                    "The alert has been acknowledged. No release was requested."}
+                  {status === "RELEASED" &&
                     (isAutoReleased
-                      ? "The countdown expired. An automatic release request has been recorded."
-                      : "A manual release request has been recorded.")}
+                      ? "The countdown expired. A release command was sent automatically."
+                      : "A release command was sent.")}
+                  {status !== "SENT" && (
+                    <>
+                      {" "}
+                      Returning to monitoring in{" "}
+                      <span className="font-mono">{formatClock(resetRemainingMs / 1000)}</span>.
+                    </>
+                  )}
                 </p>
               </div>
               <div className="shrink-0 border-l border-border pl-7 pr-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   Auto-Release In
                 </p>
-                <p className="mt-1 font-mono text-3xl font-bold text-destructive">
-                  {dto.notificationStatus === "SENT" ? countdown : "--:--"}
-                </p>
+                <p className="mt-1 font-mono text-3xl font-bold text-destructive">{countdown}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {showAcknowledgeButton && (
-                  <Button variant="primary" onClick={handleAcknowledge} disabled={pending}>
-                    <CheckCircle2 className="h-4 w-4" />
-                    Acknowledge Now
-                  </Button>
-                )}
-                {showReleaseButton && (
-                  <Button variant="danger" onClick={handleRelease} disabled={pending}>
-                    <Zap className="h-4 w-4" />
-                    Release Now
-                  </Button>
-                )}
+                <Button variant="primary" onClick={handleAcknowledge} disabled={!canAct}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Acknowledge Now
+                </Button>
+                <Button variant="danger" onClick={handleRelease} disabled={!canAct}>
+                  <Zap className="h-4 w-4" />
+                  Release Now
+                </Button>
               </div>
             </div>
           </Card>
         )}
-
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <InfoCard label="Owner" value={device.owner} icon={<Building2 className="h-4 w-4" />} />
           <InfoCard label="Installation Date" value={device.installationDate} icon={<Calendar className="h-4 w-4" />} />
           <InfoCard label="Device Number" value={device.deviceNumber} icon={<KeyRound className="h-4 w-4" />} />
           <InfoCard label="Location" value={device.location} icon={<MapPin className="h-4 w-4" />} />
         </div>
-
         <div className="grid gap-4 sm:grid-cols-3">
           <StatCard value={historyRows?.length ?? "—"} label="Recent Notifications" icon={<Bell className="h-5 w-5" />} />
           <StatCard
@@ -355,7 +375,6 @@ function Dashboard() {
             tone="warning"
           />
         </div>
-
         <div className="space-y-3">
           <SectionTitle>Notification History</SectionTitle>
           <Card className="overflow-x-auto">

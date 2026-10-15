@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as FaqRouteImport } from './routes/faq'
-import { Route as HardwareStatusRouteImport } from './routes/hardware-status'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
@@ -24,8 +23,6 @@ import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notific
 import { Route as ApiNotificationReleaseRouteImport } from './routes/api/notification-release'
 import { Route as ApiSensorReadingRouteImport } from './routes/api/sensor-reading'
 import { Route as ApiUserRoleRouteImport } from './routes/api/user-role'
-import { Route as ApiFullOverrideActivateRouteImport } from './routes/api/full-override/activate'
-import { Route as ApiFullOverrideClearRouteImport } from './routes/api/full-override/clear'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,11 +37,6 @@ const AboutRoute = AboutRouteImport.update({
 const FaqRoute = FaqRouteImport.update({
   id: '/faq',
   path: '/faq',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HardwareStatusRoute = HardwareStatusRouteImport.update({
-  id: '/hardware-status',
-  path: '/hardware-status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -103,22 +95,11 @@ const ApiUserRoleRoute = ApiUserRoleRouteImport.update({
   path: '/api/user-role',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiFullOverrideActivateRoute = ApiFullOverrideActivateRouteImport.update({
-  id: '/api/full-override/activate',
-  path: '/api/full-override/activate',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiFullOverrideClearRoute = ApiFullOverrideClearRouteImport.update({
-  id: '/api/full-override/clear',
-  path: '/api/full-override/clear',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/faq': typeof FaqRoute
-  '/hardware-status': typeof HardwareStatusRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
@@ -130,14 +111,11 @@ export interface FileRoutesByFullPath {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
   '/api/user-role': typeof ApiUserRoleRoute
-  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
-  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/faq': typeof FaqRoute
-  '/hardware-status': typeof HardwareStatusRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
@@ -149,15 +127,12 @@ export interface FileRoutesByTo {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
   '/api/user-role': typeof ApiUserRoleRoute
-  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
-  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/faq': typeof FaqRoute
-  '/hardware-status': typeof HardwareStatusRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/profile': typeof ProfileRoute
@@ -169,8 +144,6 @@ export interface FileRoutesById {
   '/api/notification-release': typeof ApiNotificationReleaseRoute
   '/api/sensor-reading': typeof ApiSensorReadingRoute
   '/api/user-role': typeof ApiUserRoleRoute
-  '/api/full-override/activate': typeof ApiFullOverrideActivateRoute
-  '/api/full-override/clear': typeof ApiFullOverrideClearRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -178,7 +151,6 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/faq'
-    | '/hardware-status'
     | '/login'
     | '/notifications'
     | '/profile'
@@ -190,14 +162,11 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/sensor-reading'
     | '/api/user-role'
-    | '/api/full-override/activate'
-    | '/api/full-override/clear'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/about'
     | '/faq'
-    | '/hardware-status'
     | '/login'
     | '/notifications'
     | '/profile'
@@ -209,14 +178,11 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/sensor-reading'
     | '/api/user-role'
-    | '/api/full-override/activate'
-    | '/api/full-override/clear'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/faq'
-    | '/hardware-status'
     | '/login'
     | '/notifications'
     | '/profile'
@@ -228,15 +194,12 @@ export interface FileRouteTypes {
     | '/api/notification-release'
     | '/api/sensor-reading'
     | '/api/user-role'
-    | '/api/full-override/activate'
-    | '/api/full-override/clear'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   FaqRoute: typeof FaqRoute
-  HardwareStatusRoute: typeof HardwareStatusRoute
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   ProfileRoute: typeof ProfileRoute
@@ -248,8 +211,6 @@ export interface RootRouteChildren {
   ApiNotificationReleaseRoute: typeof ApiNotificationReleaseRoute
   ApiSensorReadingRoute: typeof ApiSensorReadingRoute
   ApiUserRoleRoute: typeof ApiUserRoleRoute
-  ApiFullOverrideActivateRoute: typeof ApiFullOverrideActivateRoute
-  ApiFullOverrideClearRoute: typeof ApiFullOverrideClearRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -273,13 +234,6 @@ declare module '@tanstack/react-router' {
       path: '/faq'
       fullPath: '/faq'
       preLoaderRoute: typeof FaqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/hardware-status': {
-      id: '/hardware-status'
-      path: '/hardware-status'
-      fullPath: '/hardware-status'
-      preLoaderRoute: typeof HardwareStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -359,20 +313,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUserRoleRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/full-override/activate': {
-      id: '/api/full-override/activate'
-      path: '/api/full-override/activate'
-      fullPath: '/api/full-override/activate'
-      preLoaderRoute: typeof ApiFullOverrideActivateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/full-override/clear': {
-      id: '/api/full-override/clear'
-      path: '/api/full-override/clear'
-      fullPath: '/api/full-override/clear'
-      preLoaderRoute: typeof ApiFullOverrideClearRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -380,7 +320,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   FaqRoute: FaqRoute,
-  HardwareStatusRoute: HardwareStatusRoute,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   ProfileRoute: ProfileRoute,
@@ -392,8 +331,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationReleaseRoute: ApiNotificationReleaseRoute,
   ApiSensorReadingRoute: ApiSensorReadingRoute,
   ApiUserRoleRoute: ApiUserRoleRoute,
-  ApiFullOverrideActivateRoute: ApiFullOverrideActivateRoute,
-  ApiFullOverrideClearRoute: ApiFullOverrideClearRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

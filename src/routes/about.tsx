@@ -81,10 +81,10 @@ function AboutPage() {
   }
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin || !bypassEnabled) {
       setSliderOpen(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, bypassEnabled]);
 
   useEffect(() => {
     if (!sliderOpen) return;
@@ -131,6 +131,10 @@ function AboutPage() {
 
   async function toggleBypass() {
     if (!isAdmin || bypassPending || bypassLoading) return;
+    if (simulationTimer.current) {
+      clearTimeout(simulationTimer.current);
+      simulationTimer.current = null;
+    }
     setBypassPending(true);
     try {
       const { data } = await supabase.auth.getSession();
@@ -156,7 +160,12 @@ function AboutPage() {
   async function secretActivateMotor() {
     if (!isAdmin || commandSent.current) return;
 
-     commandSent.current = true;
+    if (!bypassEnabled) {
+      toast.info("Turn Bypass ON using the clock icon first.");
+      return;
+    }
+
+    commandSent.current = true;
 
     try {
       const { data, error } = await supabase.auth.getSession();
@@ -175,16 +184,20 @@ function AboutPage() {
         }),
       });
 
+      const result = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error("Motor command failed");
+        throw new Error(result.error || "Motor command failed");
       }
 
-      console.log("DETECT command sent");
+      toast.success("DETECT command sent");
     } catch (error) {
       console.error("Failed to send DETECT command:", error);
-      toast.error("Unable to send DETECT command");
+      toast.error(error instanceof Error ? error.message : "Unable to send DETECT command");
     } finally {
-      commandSent.current = false;
+      setTimeout(() => {
+        commandSent.current = false;
+      }, 1500);
     }
   }
 
@@ -210,6 +223,7 @@ function AboutPage() {
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
         toast.error(result.error || "Failed to update bypass fill level");
+        if (response.status === 409) setBypassEnabledLocal(false);
       }
     } catch (error) {
       console.error("Simulation update failed:", error);
