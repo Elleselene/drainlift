@@ -209,11 +209,13 @@ async function applyEffectiveLevel(
   };
 
   if (currentStatus(row) !== "NOT_SENT") {
-    return saveRow(base);
+    const updated = await updateIf(base, (q) => q.eq("notification_status", row.notification_status));
+    return updated ?? fetchRow();
   }
 
   if (level < REARM_BELOW) {
-    return saveRow({ ...base, release_armed: true });
+    const updated = await updateIf({ ...base, release_armed: true }, (q) => q.eq("notification_status", "NOT_SENT"));
+    return updated ?? fetchRow();
   }
 
   if (level >= FULL_LEVEL && row.release_armed === true) {
@@ -234,7 +236,8 @@ async function applyEffectiveLevel(
     return fetchRow();
   }
 
-  return saveRow(base);
+  const updated = await updateIf(base, (q) => q.eq("notification_status", "NOT_SENT"));
+  return updated ?? fetchRow();
 }
 
 export async function getNotificationState(): Promise<NotificationDto> {
