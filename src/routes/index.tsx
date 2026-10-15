@@ -226,7 +226,7 @@ function Dashboard() {
     if (!result) return;
     if (result.ok) {
       toast.success("Release Requested", {
-        description: "The release command was sent to the Raspberry Pi.",
+        description: "The RELEASE request was recorded for the Raspberry Pi.",
       });
     } else {
       toast.info("This alert was already resolved.");
@@ -241,7 +241,7 @@ function Dashboard() {
     if (lastAutoRelease.current === dto.releasedAt) return;
     lastAutoRelease.current = dto.releasedAt;
     toast.info("Automatic Release Requested", {
-      description: "The countdown expired and a release command was sent.",
+      description: "The RELEASE request was recorded automatically.",
     });
     void refreshHistory();
   }, [dto?.releasedBy, dto?.releasedAt, refreshHistory]);
@@ -315,7 +315,7 @@ function Dashboard() {
                   </StatusPill>
                 )}
                 <h2 className="mt-2 text-xl font-bold sm:text-2xl">
-                  DrainLift Unit – Waste Full
+                  Waste Compartment Full
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {status === "SENT" &&
@@ -324,8 +324,8 @@ function Dashboard() {
                     "The alert has been acknowledged. No release was requested."}
                   {status === "RELEASED" &&
                     (isAutoReleased
-                      ? "The countdown expired. A release command was sent automatically."
-                      : "A release command was sent.")}
+                      ? "The countdown expired. A RELEASE request was recorded automatically."
+                      : "A RELEASE request was recorded.")}
                   {status !== "SENT" && (
                     <>
                       {" "}

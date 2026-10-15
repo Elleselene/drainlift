@@ -177,7 +177,7 @@ async function resetIfDue(row: StateRow): Promise<StateRow> {
       release_armed: row.fill_level < REARM_BELOW,
       waste_status: row.fill_level >= FULL_LEVEL ? "FULL" : "NOT_FULL",
     },
-    (q) => q.in("notification_status", ["ACKNOWLEDGED", "RELEASED", "EXPIRED"]),
+    (q) => q.in("notification_status", ["ACKNOWLEDGED", "RELEASED", "EXPIRED"]).lte("reset_at", new Date().toISOString()),
   );
 
   return updated ?? fetchRow();
@@ -313,7 +313,7 @@ export async function acknowledgeNotification(): Promise<TransitionResult> {
       acknowledged_at: new Date(now).toISOString(),
       reset_at: new Date(now + RESET_DELAY_MS).toISOString(),
     },
-    (q) => q.eq("notification_status", "SENT"),
+    (q) => q.eq("notification_status", "SENT").eq("notification_sent_at", row.notification_sent_at),
   );
 
   if (!updated) return { performed: false, state: toDto(await fetchRow()) };
@@ -333,7 +333,7 @@ export async function releaseNotification(): Promise<TransitionResult> {
       released_by: "manual",
       reset_at: new Date(now + RESET_DELAY_MS).toISOString(),
     },
-    (q) => q.eq("notification_status", "SENT"),
+    (q) => q.eq("notification_status", "SENT").eq("notification_sent_at", row.notification_sent_at),
   );
 
   if (!updated) return { performed: false, state: toDto(await fetchRow()) };
