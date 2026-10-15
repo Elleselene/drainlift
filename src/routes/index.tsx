@@ -267,7 +267,7 @@ function Dashboard() {
       subtitle="Waste Compartment Monitoring — Real-time Alerts"
       actions={
         <StatusPill tone="primary" className="hidden sm:inline-flex">
-          {dto?.fullOverrideActive ? "Bypass Mode" : "Live Monitoring"}
+          {dto?.fullOverrideActive ? "System Online" : "System Online"}
         </StatusPill>
       }
     >
@@ -294,7 +294,7 @@ function Dashboard() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
                   {dto.fillLevel >= 100 && !dto.releaseArmed
-                    ? "A new alert starts after the fill level drops below 50%."
+                    ? ""
                     : "Monitoring the waste compartment fill level."}
                 </p>
               </div>
