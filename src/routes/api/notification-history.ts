@@ -15,7 +15,6 @@ type HistoryRow = {
   released_at: string | null;
   released_by: "manual" | "auto" | null;
   fill_level: number | null;
-  status?: "ACKNOWLEDGED" | "RELEASED" | null;
   created_at: string;
 };
 
@@ -51,20 +50,15 @@ export const Route = createFileRoute("/api/notification-history")({
         }
 
         const rows = (data as HistoryRow[]).map((row, i) => {
-          const status: "acknowledged" | "auto-released" | "released" =
-            row.status === "ACKNOWLEDGED"
-              ? "acknowledged"
-              : row.status === "RELEASED" || row.released_at
-                ? row.released_by === "auto"
-                  ? "auto-released"
-                  : "released"
-                : "acknowledged";
+          // Ang status ay depende sa kung paano na-resolve ang cycle na ito
+          const status: "acknowledged" | "auto-released" | "released" = row.acknowledged_at
+            ? "acknowledged"
+            : row.released_by === "auto"
+              ? "auto-released"
+              : "released"; // manual na "Activate Actuator" command
 
           // Yung timestamp na ipapakita: kailan talaga na-resolve (hindi kung kailan na-send)
-          const resolvedAt =
-            status === "acknowledged"
-              ? (row.acknowledged_at ?? row.notification_sent_at)
-              : (row.released_at ?? row.notification_sent_at);
+          const resolvedAt = row.acknowledged_at ?? row.released_at ?? row.notification_sent_at;
 
           return {
             id: row.id,

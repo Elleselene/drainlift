@@ -1,22 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getUserRole } from "@/lib/server/auth";
 import { acknowledgeNotification } from "@/lib/server/notification-store";
+import { requireAdmin } from "@/lib/server/auth";
 
+// POST /api/notification-acknowledge — pinipindot ng barangay official kapag nakita na
+// niya ang alert. Itigil ang countdown, hindi na kailangang i-activate ang actuator.
 export const Route = createFileRoute("/api/notification-acknowledge")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const role = await getUserRole(request);
-        if (role !== "admin" && role !== "user") {
-          return Response.json({ error: "Login required" }, { status: 403 });
+        if (!(await requireAdmin(request))) {
+          return Response.json({ error: "Admin access required" }, { status: 403 });
         }
-        try {
-          const { performed, state } = await acknowledgeNotification();
-          return Response.json({ ok: performed, state });
-        } catch (error) {
-          console.error("[notification-acknowledge]", error);
-          return Response.json({ error: "Unable to update notification" }, { status: 500 });
-        }
+
+        return Response.json(await acknowledgeNotification());
       },
     },
   },

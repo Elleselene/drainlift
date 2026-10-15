@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Clock, Droplet, Settings, Users, X } from "lucide-react";
-import { toast } from "sonner";
 import { AppShell } from "@/components/dl/AppShell";
 import { Card, SectionTitle } from "@/components/dl/primitives";
 import { initialsOf, researchers } from "@/lib/drainlift";
@@ -58,13 +57,11 @@ function AboutPage() {
   const { userRole, roleLoading } = useAppState();
   const isAdmin = !roleLoading && userRole === "admin";
 
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commandSent = useRef(false);
 
   const [sliderOpen, setSliderOpen] = useState(false);
   const [fillLevel, setFillLevel] = useState(0);
-  const [bypassEnabled, setBypassEnabledLocal] = useState(false);
-  const [bypassLoading, setBypassLoading] = useState(true);
-  const [bypassPending, setBypassPending] = useState(false);
 
   const simulationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,10 +78,10 @@ function AboutPage() {
   }
 
   useEffect(() => {
-    if (!isAdmin || !bypassEnabled) {
+    if (!isAdmin) {
       setSliderOpen(false);
     }
-  }, [isAdmin, bypassEnabled]);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!sliderOpen) return;
@@ -102,70 +99,20 @@ function AboutPage() {
 
   useEffect(() => {
     return () => {
+      if (pressTimer.current) {
+        clearTimeout(pressTimer.current);
+      }
+
       if (simulationTimer.current) {
         clearTimeout(simulationTimer.current);
       }
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadBypass() {
-      try {
-        const response = await fetch("/api/notification", { cache: "no-store" });
-        if (!response.ok) throw new Error("Unable to load Bypass Mode");
-        const state = await response.json();
-        if (!cancelled) {
-          setBypassEnabledLocal(Boolean(state.fullOverrideActive));
-          setFillLevel(Number(state.fillLevel) || 0);
-        }
-      } catch {
-        if (!cancelled) toast.error("Unable to load Bypass Mode");
-      } finally {
-        if (!cancelled) setBypassLoading(false);
-      }
-    }
-    void loadBypass();
-    return () => { cancelled = true; };
-  }, []);
-
-  async function toggleBypass() {
-    if (!isAdmin || bypassPending || bypassLoading) return;
-    if (simulationTimer.current) {
-      clearTimeout(simulationTimer.current);
-      simulationTimer.current = null;
-    }
-    setBypassPending(true);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error("Please log in again.");
-      const response = await fetch("/api/fill-simulation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: "toggle-bypass", enabled: !bypassEnabled }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to switch Bypass Mode");
-      setBypassEnabledLocal(result.state.fullOverrideActive);
-      setFillLevel(result.state.fillLevel);
-      toast.success(result.state.fullOverrideActive ? "Bypass Mode ON" : "Bypass Mode OFF");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to switch Bypass Mode");
-    } finally {
-      setBypassPending(false);
-    }
-  }
-
   async function secretActivateMotor() {
     if (!isAdmin || commandSent.current) return;
 
-    if (!bypassEnabled) {
-      toast.info("Turn Bypass ON using the clock icon first.");
-      return;
-    }
-
-    commandSent.current = true;
+     commandSent.current = true;
 
     try {
       const { data, error } = await supabase.auth.getSession();
@@ -184,22 +131,38 @@ function AboutPage() {
         }),
       });
 
-      const result = await response.json().catch(() => ({}));
-
       if (!response.ok) {
-        throw new Error(result.error || "Motor command failed");
+        throw new Error("Motor command failed");
       }
 
-      toast.success("DETECT command sent");
+      console.log("DETECT command sent");
     } catch (error) {
       console.error("Failed to send DETECT command:", error);
-      toast.error(error instanceof Error ? error.message : "Unable to send DETECT command");
-    } finally {
-      setTimeout(() => {
-        commandSent.current = false;
-      }, 1500);
     }
   }
+
+  function startSecretPress() {
+    if (!isAdmin) return;
+
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+    }
+
+    commandSent.current = false;
+
+    pressTimer.current = setTimeout(() => {
+      pressTimer.current = null;
+      void secretActivateMotor();
+    }, 3000);
+  }
+
+  function cancelSecretPress() {
+  if (pressTimer.current) {
+    clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  }
+}
+
 
   async function saveSimulatedFill(level: number) {
     try {
@@ -221,9 +184,7 @@ function AboutPage() {
       });
 
       if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        toast.error(result.error || "Failed to update bypass fill level");
-        if (response.status === 409) setBypassEnabledLocal(false);
+        console.error("Failed to update simulated fill level");
       }
     } catch (error) {
       console.error("Simulation update failed:", error);
@@ -242,7 +203,11 @@ function AboutPage() {
           {isAdmin ? (
             <button
               type="button"
-              onClick={() => void secretActivateMotor()}
+              onPointerDown={startSecretPress}
+              onPointerUp={cancelSecretPress}
+              onPointerLeave={cancelSecretPress}
+              onPointerCancel={cancelSecretPress}
+              onContextMenu={(e) => e.preventDefault()}
               className="mx-auto -mb-3.5 block select-none border-0 bg-transparent p-0"
               aria-label="DrainLift"
             >
@@ -273,23 +238,7 @@ function AboutPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {cards.map((c) => (
             <Card key={c.title} className="p-5">
-              {c.title === "Automatic Fail-Safe" && isAdmin ? (
-                <button
-                  type="button"
-                  onClick={() => void toggleBypass()}
-                  disabled={bypassPending || bypassLoading}
-                  aria-label={bypassEnabled ? "Turn Bypass OFF" : "Turn Bypass ON"}
-                  aria-pressed={bypassEnabled}
-                  title={bypassEnabled ? "Bypass ON — click to turn OFF" : "Bypass OFF — click to turn ON"}
-                  className="rounded-full disabled:opacity-50"
-                >
-                  <span className={bypassEnabled ? "flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-900" : "flex h-9 w-9 items-center justify-center text-foreground"}>
-                    <Clock className="h-6 w-6" />
-                  </span>
-                </button>
-              ) : (
-                <c.icon className="h-6 w-6 text-foreground" />
-              )}
+              <c.icon className="h-6 w-6 text-foreground" />
               <h3 className="mt-4 font-semibold">{c.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 {c.body}
@@ -334,13 +283,7 @@ function AboutPage() {
                   {isCarla && isAdmin ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!bypassEnabled) {
-                          toast.info("Turn Bypass ON using the clock icon first.");
-                          return;
-                        }
-                        setSliderOpen(true);
-                      }}
+                      onClick={() => setSliderOpen(true)}
                       className={imageClass}
                       aria-label={r.name}
                     >
@@ -399,7 +342,7 @@ function AboutPage() {
               onChange={(event) =>
                 handleFillChange(Number(event.target.value))
               }
-              aria-label="Bypass fill level"
+              aria-label="Simulated fill level"
               className="absolute h-2 w-40 cursor-pointer accent-emerald-500"
               style={{
                 transform: "rotate(-90deg)",
