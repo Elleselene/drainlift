@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
 import { requireAdmin } from "@/lib/server/auth";
-import { isBypassActive } from "@/lib/server/notification-store";
 
 const DETECT_COOLDOWN_MS = 6000;
 
@@ -37,10 +36,6 @@ export const Route = createFileRoute("/api/motor-command")({
         }
 
         try {
-          if (!(await isBypassActive())) {
-            return Response.json({ error: "Turn Bypass Mode ON first." }, { status: 409 });
-          }
-
           const { data: last } = await supabaseAdmin
             .from("motor_command")
             .select("command_id")

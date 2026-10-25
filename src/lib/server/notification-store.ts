@@ -11,7 +11,7 @@ export type { NotificationDto, NotificationStatus, ReleasedBy, WasteStatus };
 const COUNTDOWN_MS = 5 * 60 * 1000;
 const RESET_DELAY_MS = 90 * 1000;
 const FULL_LEVEL = 100;
-const REARM_BELOW = 50;
+const REARM_BELOW = 100;
 const STATE_ROW_ID = 1;
 
 type StateRow = {
@@ -42,8 +42,7 @@ function currentStatus(row: StateRow): NotificationStatus {
 function resetDeadline(row: StateRow): number | null {
   const stored = toEpoch(row.reset_at);
   if (stored !== null) return stored;
-  const base =
-    toEpoch(row.released_at) ?? toEpoch(row.acknowledged_at) ?? toEpoch(row.notification_sent_at);
+  const base = toEpoch(row.released_at);
   return base === null ? null : base + RESET_DELAY_MS;
 }
 
@@ -51,7 +50,7 @@ function toDto(row: StateRow): NotificationDto {
   const now = Date.now();
   const status = currentStatus(row);
   const sentAt = toEpoch(row.notification_sent_at);
-  const resetAt = status === "ACKNOWLEDGED" || status === "RELEASED" ? resetDeadline(row) : null;
+  const resetAt = status === "RELEASED" ? resetDeadline(row) : null;
 
   const remainingMs =
     status === "SENT" && sentAt !== null ? Math.max(0, COUNTDOWN_MS - (now - sentAt)) : 0;
@@ -163,7 +162,11 @@ async function resetIfDue(row: StateRow): Promise<StateRow> {
   const status = currentStatus(row);
   if (status !== "ACKNOWLEDGED" && status !== "RELEASED") return row;
 
-  const deadline = resetDeadline(row);
+  // An acknowledged full condition remains visible with --:-- until its
+  // effective fill level falls below 100. Sensor readings continue normally.
+  // Only an actual release is subject to the 90-second cooldown.
+  if (status === "ACKNOWLEDGED" && row.fill_level >= FULL_LEVEL) return row;
+  const deadline = status === "ACKNOWLEDGED" ? 0 : resetDeadline(row);
   if (deadline === null || Date.now() < deadline) return row;
 
   const updated = await updateIf(
@@ -174,7 +177,7 @@ async function resetIfDue(row: StateRow): Promise<StateRow> {
       released_at: null,
       released_by: null,
       reset_at: null,
-      release_armed: row.fill_level < REARM_BELOW,
+      release_armed: row.fill_level < FULL_LEVEL,
       waste_status: row.fill_level >= FULL_LEVEL ? "FULL" : "NOT_FULL",
     },
     (q) => q.in("notification_status", ["ACKNOWLEDGED", "RELEASED", "EXPIRED"]),
@@ -208,6 +211,13 @@ async function applyEffectiveLevel(
     waste_status: level >= FULL_LEVEL ? "FULL" : "NOT_FULL",
   };
 
+  if (currentStatus(row) === "ACKNOWLEDGED") {
+    // Acknowledging does not freeze the sensor. Once the actual/overridden
+    // level falls below 100, clear the acknowledged alert immediately.
+    const updated = await saveRow(base);
+    return level < FULL_LEVEL ? resetIfDue(updated) : updated;
+  }
+
   if (currentStatus(row) !== "NOT_SENT") {
     return saveRow(base);
   }
@@ -216,7 +226,8 @@ async function applyEffectiveLevel(
     return saveRow({ ...base, release_armed: true });
   }
 
-  if (level >= FULL_LEVEL && row.release_armed === true) {
+  // Acknowledged/full conditions must first fall below 100% before a new alert.
+  if (level >= FULL_LEVEL && row.release_armed !== false) {
     const started = await updateIf(
       {
         ...base,
@@ -228,7 +239,7 @@ async function applyEffectiveLevel(
         reset_at: null,
         release_armed: false,
       },
-      (q) => q.eq("notification_status", "NOT_SENT").eq("release_armed", true),
+      (q) => q.eq("notification_status", "NOT_SENT"),
     );
     if (started) return started;
     return fetchRow();
@@ -269,23 +280,38 @@ export async function setBypassEnabled(enabled: boolean): Promise<NotificationDt
   if ((row.full_override_active === true) === enabled) return toDto(row);
 
   if (enabled) {
+    // Never reuse a previous simulated fill_level as the real sensor reading.
+    // A null actual reading means the sensor has not reported a value yet.
+    const actual = row.actual_fill_level;
     const updated = await updateIf(
       {
         full_override_active: true,
-        actual_fill_level: row.actual_fill_level ?? row.fill_level,
+        ...(actual !== null ? { fill_level: actual, waste_status: actual === FULL_LEVEL ? "FULL" : "NOT_FULL" } : {}),
       },
       (q) => q.or("full_override_active.is.null,full_override_active.eq.false"),
     );
     return toDto(updated ?? (await fetchRow()));
   }
 
-  const switched = await updateIf({ full_override_active: false }, (q) =>
-    q.eq("full_override_active", true),
-  );
+  // Switch off first with a status guard. Do not cancel an already issued release.
+  const pending = currentStatus(row) === "SENT";
+  const actual = row.actual_fill_level;
+  const patch: Partial<StateRow> = {
+    full_override_active: false,
+    ...(actual !== null ? { fill_level: actual, waste_status: actual === FULL_LEVEL ? "FULL" : "NOT_FULL" } : {}),
+    ...(pending ? {
+      notification_status: "NOT_SENT", notification_sent_at: null,
+      acknowledged_at: null, released_at: null, released_by: null, reset_at: null,
+      release_armed: true,
+    } : {}),
+  };
+  const switched = await updateIf(patch, (q) => {
+    const guarded = q.eq("full_override_active", true);
+    return pending ? guarded.eq("notification_status", "SENT") : guarded;
+  });
   if (!switched) return toDto(await fetchRow());
-
-  const actual = switched.actual_fill_level;
-  if (actual === null || actual === undefined) return toDto(switched);
+  if (actual === null) return toDto(switched);
+  // Re-evaluate the real sensor reading using the normal alert rules.
   return toDto(await applyEffectiveLevel(switched, actual));
 }
 
@@ -296,7 +322,7 @@ export async function isBypassActive(): Promise<boolean> {
 
 export class BypassRequiredError extends Error {
   constructor() {
-    super("Turn Bypass Mode ON first.");
+    super("Open Carla fill control before changing its value.");
   }
 }
 
@@ -311,13 +337,16 @@ export async function acknowledgeNotification(): Promise<TransitionResult> {
     {
       notification_status: "ACKNOWLEDGED",
       acknowledged_at: new Date(now).toISOString(),
-      reset_at: new Date(now + RESET_DELAY_MS).toISOString(),
+      reset_at: null,
+      release_armed: false,
     },
     (q) => q.eq("notification_status", "SENT"),
   );
 
   if (!updated) return { performed: false, state: toDto(await fetchRow()) };
   await logHistory(updated, "ACKNOWLEDGED");
+  // Keep --:-- visible while the compartment remains full. The next reading
+  // below 100 clears this acknowledgement without any cooldown.
   return { performed: true, state: toDto(updated) };
 }
 

@@ -22,6 +22,7 @@ export const Route = createFileRoute("/api/fill-simulation")({
           return Response.json({
             active: state.fullOverrideActive,
             fillLevel: state.fillLevel,
+            actualFillLevel: state.actualFillLevel,
             status: state.notificationStatus,
           });
         } catch (error) {
@@ -42,6 +43,12 @@ export const Route = createFileRoute("/api/fill-simulation")({
 
         try {
           switch (body.action) {
+            case "start": {
+              return Response.json({ ok: true, state: await setBypassEnabled(true) });
+            }
+            case "stop": {
+              return Response.json({ ok: true, state: await setBypassEnabled(false) });
+            }
             case "toggle-bypass": {
               if (typeof body.enabled !== "boolean") {
                 return Response.json({ error: "enabled (boolean) is required" }, { status: 400 });

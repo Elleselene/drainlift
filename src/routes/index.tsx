@@ -138,8 +138,8 @@ function useNotification() {
     if (!dto) return;
     const due =
       (dto.notificationStatus === "SENT" && remainingMs === 0) ||
-      ((dto.notificationStatus === "ACKNOWLEDGED" || dto.notificationStatus === "RELEASED") &&
-        resetRemainingMs === 0);
+      ((dto.notificationStatus === "ACKNOWLEDGED") ||
+        (dto.notificationStatus === "RELEASED" && resetRemainingMs === 0));
     if (!due) return;
     const key = `${dto.notificationStatus}:${dto.notificationSentAt}`;
     if (expiryRefreshKey.current === key) return;
@@ -246,20 +246,8 @@ function Dashboard() {
     void refreshHistory();
   }, [dto?.releasedBy, dto?.releasedAt, refreshHistory]);
 
-  let countdown = "--:--";
-  if (dto) {
-    const windowMs = dto.windowSeconds * 1000;
-    if (status === "SENT") {
-      countdown = formatClock(remainingMs / 1000);
-    } else if (status === "ACKNOWLEDGED" && dto.notificationSentAt && dto.acknowledgedAt) {
-      countdown = formatClock((windowMs - (dto.acknowledgedAt - dto.notificationSentAt)) / 1000);
-    } else if (status === "RELEASED") {
-      countdown =
-        isAutoReleased || !dto.notificationSentAt || !dto.releasedAt
-          ? formatClock(0)
-          : formatClock((windowMs - (dto.releasedAt - dto.notificationSentAt)) / 1000);
-    }
-  }
+  // A stopped timer must never display a frozen value or 00:00.
+  const countdown = dto && status === "SENT" ? formatClock(remainingMs / 1000) : "--:--";
 
   return (
     <AppShell
@@ -267,7 +255,7 @@ function Dashboard() {
       subtitle="Waste Compartment Monitoring — Real-time Alerts"
       actions={
         <StatusPill tone="primary" className="hidden sm:inline-flex">
-          {dto?.fullOverrideActive ? "Bypass Mode" : "Live Monitoring"}
+          {"Live Monitoring"}
         </StatusPill>
       }
     >
@@ -293,9 +281,7 @@ function Dashboard() {
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   <strong className="text-white">Current Fill Level: {dto.fillLevel}%</strong>{" "}
-                  {dto.fillLevel >= 100 && !dto.releaseArmed
-                    ? "A new alert starts after the fill level drops below 50%."
-                    : "Monitoring the waste compartment fill level."}
+                  {"Monitoring the waste compartment fill level."}
                 </p>
               </div>
             </div>
@@ -326,7 +312,7 @@ function Dashboard() {
                     (isAutoReleased
                       ? "The countdown expired. A release command was sent automatically."
                       : "A release command was sent.")}
-                  {status !== "SENT" && (
+                  {status === "RELEASED" && (
                     <>
                       {" "}
                       Returning to monitoring in{" "}
