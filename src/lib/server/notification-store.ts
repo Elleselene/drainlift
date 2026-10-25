@@ -211,6 +211,30 @@ async function applyEffectiveLevel(
     waste_status: level >= FULL_LEVEL ? "FULL" : "NOT_FULL",
   };
 
+  // A 100% reading can be temporary (trash settling). Cancel a pending
+  // alert immediately when the effective reading drops below 100%.
+  // The conditional status guard prevents cancelling a release that won a race.
+  if (currentStatus(row) === "SENT" && level < FULL_LEVEL) {
+    const cancelled = await updateIf(
+      {
+        ...base,
+        notification_status: "NOT_SENT",
+        notification_sent_at: null,
+        acknowledged_at: null,
+        released_at: null,
+        released_by: null,
+        reset_at: null,
+        release_armed: true,
+      },
+      (q) => q.eq("notification_status", "SENT"),
+    );
+    if (cancelled) return cancelled;
+    // Another request may have released/acknowledged it already.
+    // Never undo that transition with an unconditional write.
+    const latest = await fetchRow();
+    return latest;
+  }
+
   if (currentStatus(row) === "ACKNOWLEDGED") {
     // Acknowledging does not freeze the sensor. Once the actual/overridden
     // level falls below 100, clear the acknowledged alert immediately.
@@ -254,25 +278,30 @@ export async function getNotificationState(): Promise<NotificationDto> {
 
 export async function reportSensorReading(fillLevel: number): Promise<NotificationDto> {
   const level = validLevel(fillLevel);
-  const row = await loadCurrent();
+  // Do not auto-release an old full reading before considering the new sensor
+  // measurement. A drop below 100 must be allowed to cancel a pending alert.
+  const row = await resetIfDue(await fetchRow());
 
   if (row.full_override_active === true) {
     const updated = await saveRow({ actual_fill_level: level });
-    return toDto(updated);
+    return toDto(await autoReleaseIfExpired(updated));
   }
 
-  return toDto(await applyEffectiveLevel(row, level, { actual_fill_level: level }));
+  const updated = await applyEffectiveLevel(row, level, { actual_fill_level: level });
+  return toDto(await autoReleaseIfExpired(updated));
 }
 
 export async function setSimulatedFillLevel(fillLevel: number): Promise<NotificationDto> {
   const level = validLevel(fillLevel);
-  const row = await loadCurrent();
+  // Manual override uses the same effective-level transitions as the sensor.
+  const row = await resetIfDue(await fetchRow());
 
   if (row.full_override_active !== true) {
     throw new BypassRequiredError();
   }
 
-  return toDto(await applyEffectiveLevel(row, level));
+  const updated = await applyEffectiveLevel(row, level);
+  return toDto(await autoReleaseIfExpired(updated));
 }
 
 export async function setBypassEnabled(enabled: boolean): Promise<NotificationDto> {
