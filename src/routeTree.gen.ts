@@ -17,6 +17,7 @@ import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ApiFillSimulationRouteImport } from './routes/api/fill-simulation'
 import { Route as ApiMotorCommandRouteImport } from './routes/api/motor-command'
+import { Route as ApiMotorControlRouteImport } from './routes/api/motor-control'
 import { Route as ApiNotificationRouteImport } from './routes/api/notification'
 import { Route as ApiNotificationAcknowledgeRouteImport } from './routes/api/notification-acknowledge'
 import { Route as ApiNotificationHistoryRouteImport } from './routes/api/notification-history'
@@ -64,6 +65,11 @@ const ApiMotorCommandRoute = ApiMotorCommandRouteImport.update({
   path: '/api/motor-command',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMotorControlRoute = ApiMotorControlRouteImport.update({
+  id: '/api/motor-control',
+  path: '/api/motor-control',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiNotificationRoute = ApiNotificationRouteImport.update({
   id: '/api/notification',
   path: '/api/notification',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/api/fill-simulation': typeof ApiFillSimulationRoute
   '/api/motor-command': typeof ApiMotorCommandRoute
+  '/api/motor-control': typeof ApiMotorControlRoute
   '/api/notification': typeof ApiNotificationRoute
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/api/fill-simulation': typeof ApiFillSimulationRoute
   '/api/motor-command': typeof ApiMotorCommandRoute
+  '/api/motor-control': typeof ApiMotorControlRoute
   '/api/notification': typeof ApiNotificationRoute
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/api/fill-simulation': typeof ApiFillSimulationRoute
   '/api/motor-command': typeof ApiMotorCommandRoute
+  '/api/motor-control': typeof ApiMotorControlRoute
   '/api/notification': typeof ApiNotificationRoute
   '/api/notification-acknowledge': typeof ApiNotificationAcknowledgeRoute
   '/api/notification-history': typeof ApiNotificationHistoryRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/api/fill-simulation'
     | '/api/motor-command'
+    | '/api/motor-control'
     | '/api/notification'
     | '/api/notification-acknowledge'
     | '/api/notification-history'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/api/fill-simulation'
     | '/api/motor-command'
+    | '/api/motor-control'
     | '/api/notification'
     | '/api/notification-acknowledge'
     | '/api/notification-history'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/api/fill-simulation'
     | '/api/motor-command'
+    | '/api/motor-control'
     | '/api/notification'
     | '/api/notification-acknowledge'
     | '/api/notification-history'
@@ -205,6 +217,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   ApiFillSimulationRoute: typeof ApiFillSimulationRoute
   ApiMotorCommandRoute: typeof ApiMotorCommandRoute
+  ApiMotorControlRoute: typeof ApiMotorControlRoute
   ApiNotificationRoute: typeof ApiNotificationRoute
   ApiNotificationAcknowledgeRoute: typeof ApiNotificationAcknowledgeRoute
   ApiNotificationHistoryRoute: typeof ApiNotificationHistoryRoute
@@ -271,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMotorCommandRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/motor-control': {
+      id: '/api/motor-control'
+      path: '/api/motor-control'
+      fullPath: '/api/motor-control'
+      preLoaderRoute: typeof ApiMotorControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/notification': {
       id: '/api/notification'
       path: '/api/notification'
@@ -325,6 +345,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   ApiFillSimulationRoute: ApiFillSimulationRoute,
   ApiMotorCommandRoute: ApiMotorCommandRoute,
+  ApiMotorControlRoute: ApiMotorControlRoute,
   ApiNotificationRoute: ApiNotificationRoute,
   ApiNotificationAcknowledgeRoute: ApiNotificationAcknowledgeRoute,
   ApiNotificationHistoryRoute: ApiNotificationHistoryRoute,

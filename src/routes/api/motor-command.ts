@@ -36,6 +36,16 @@ export const Route = createFileRoute("/api/motor-command")({
         }
 
         try {
+          const { data: control, error: controlError } = await supabaseAdmin
+            .from("motor_control").select("enabled").eq("id", 1).single();
+          if (controlError || !control || control.enabled !== true) {
+            return Response.json({ error: "Conveyor motor is disabled" }, { status: 409 });
+          }
+          const { data: state, error: stateError } = await supabaseAdmin
+            .from("notification_state").select("actual_fill_level,full_override_active,fill_level").eq("id", 1).single();
+          if (stateError || !state || Number(state.actual_fill_level) >= 100 || Number(state.fill_level) >= 100) {
+            return Response.json({ error: "Conveyor unavailable while compartment is full or state is unknown" }, { status: 409 });
+          }
           const { data: last } = await supabaseAdmin
             .from("motor_command")
             .select("command_id")

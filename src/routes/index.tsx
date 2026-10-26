@@ -118,7 +118,7 @@ function useNotification() {
 
   useEffect(() => {
     void refresh();
-    const id = setInterval(() => void refresh(), 500);
+    const id = setInterval(() => void refresh(), 4000);
     return () => clearInterval(id);
   }, [refresh]);
 

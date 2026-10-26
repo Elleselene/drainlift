@@ -58,6 +58,46 @@ function AboutPage() {
   const { userRole, roleLoading } = useAppState();
   const isAdmin = !roleLoading && userRole === "admin";
 
+  const [motorEnabled, setMotorEnabled] = useState<boolean | null>(null);
+  const [motorPending, setMotorPending] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    async function refreshMotor() {
+      try {
+        const response = await fetch("/api/motor-control", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active) setMotorEnabled(data.enabled === true);
+      } catch { /* retain last known state */ }
+    }
+    void refreshMotor();
+    const interval = setInterval(() => void refreshMotor(), 3000);
+    return () => { active = false; clearInterval(interval); };
+  }, [isAdmin]);
+
+  async function toggleMotor() {
+    if (!isAdmin || motorPending || motorEnabled === null) return;
+    setMotorPending(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Please log in again.");
+      const response = await fetch("/api/motor-control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ enabled: !motorEnabled }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Motor control failed");
+      setMotorEnabled(result.enabled === true);
+      toast.message(result.enabled ? "Motor enabled (standby)" : "Motor disabled — stop requested");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Motor control failed");
+    } finally { setMotorPending(false); }
+  }
+
   const commandSent = useRef(false);
 
   const [sliderOpen, setSliderOpen] = useState(false);
@@ -252,7 +292,18 @@ function AboutPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {cards.map((c) => (
             <Card key={c.title} className="p-5">
-              <c.icon className="h-6 w-6 text-foreground" />
+              {c.title === "The Problem" && isAdmin ? (
+                <button type="button" onClick={() => void toggleMotor()}
+                  disabled={motorPending || motorEnabled === null}
+                  aria-label={motorEnabled ? "Disable conveyor motor" : "Enable conveyor motor"}
+                  aria-pressed={motorEnabled === true}
+                  title={motorEnabled === null ? "Loading motor state" : motorEnabled ? "Motor enabled — click to disable" : "Motor disabled — click to enable"}
+                  className="inline-flex rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50">
+                  <Droplet className="h-6 w-6 text-foreground" fill={motorEnabled === false ? "currentColor" : "none"} />
+                </button>
+              ) : (
+                <c.icon className="h-6 w-6 text-foreground" />
+              )}
               <h3 className="mt-4 font-semibold">{c.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 {c.body}
